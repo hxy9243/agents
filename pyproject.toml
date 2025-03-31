@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "agents"
+version = "0.1.0"
+description = ""
+authors = ["Kevin Hu <hxy9243@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+dspy = "^2.6.16"
+dotenv = "^0.9.9"
+chromadb = "^0.6.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
