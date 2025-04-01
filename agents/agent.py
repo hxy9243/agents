@@ -1,10 +1,13 @@
+from typing import List
+import os
+import traceback
 
+from dotenv import load_dotenv
 import dspy
 from dspy.retrieve.chromadb_rm import ChromadbRM
 import chromadb
+from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
-
-from dotenv import load_dotenv
 
 
 class QAAgent:
@@ -23,40 +26,62 @@ class QAAgent:
         )
         dspy.configure(lm=lm)
 
-        self.lm = dspy.ReAct(
-            "question -> answer: float",
-            tools=[evaluate],
+        self.lm = dspy.ChainOfThought(
+            "context, history, message -> answer",
         )
 
     def _init_embed_retriever(self):
-        client = chromadb.Client(Settings(
-            persist_directory="chroma",
-            is_persistent=True,
-        ))
-        self.embed_coll = client.create_collection('embedding')
+        client = chromadb.Client(
+            Settings(
+                persist_directory="chroma",
+                is_persistent=True,
+            )
+        )
+        self.embed_coll = client.get_or_create_collection("embedding")
 
-    def _create_context(self, message: str):
-        # retrieve user context
-
+    def _init_db(self):
         pass
 
-    def turn(self, message: str):
-        lm_ctx = self._create_context()
+    def _create_context(self, message: str):
+        """retrieve user context"""
+        return "You're a helpful, professional therapist. You care about people's feeling and know what to ask when they are feeling ok. Your first question is usually: how are you doing and how can I help you today?"
+
+    def _save_message(self, message: str):
+        """save the conversation in the dbs"""
+        pass
+
+    def turn(self, history: List[str], message: str):
+        lm_ctx = self._create_context(message)
 
         # call predict
-        resp = self.lm(
-            context=lm_ctx,
-            message=message,
-        )
-
-        print(resp.response)
+        try:
+            resp = self.lm(context=lm_ctx, history=history, message=message)
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            raise(e)
 
         # save info
-        self.save_message({
-            'user': message,
-            'response': resp.response,
-        })
+        self._save_message(message)
+        return resp.answer
 
     def run(self):
-        ...
+        history = []
+        try:
+            while True:
+                message = input(r"User: ")
+                history.append(message)
 
+                answer = self.turn(history, message)
+
+                print("Assistant: ", answer)
+                history.append(answer)
+
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+
+
+if __name__ == "__main__":
+    agent = QAAgent()
+
+    agent.run()
