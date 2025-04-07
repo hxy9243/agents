@@ -10,7 +10,6 @@ from dspy.retrieve.chromadb_rm import ChromadbRM
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-# from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
 
 from models import Conversation, Message, init_session
 
@@ -43,7 +42,7 @@ class QAAgent:
         self.embedding = embedding = OpenAIEmbeddingFunction(
             api_base=os.getenv("LM_BASE_URL"),
             api_key=os.getenv("LM_API_KEY"),
-            model=os.getenv("EMBED_MODEL_NAME"),
+            model_name=os.getenv("EMBED_MODEL_NAME"),
         )
 
         client = chromadb.Client(

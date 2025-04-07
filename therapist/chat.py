@@ -1,4 +1,4 @@
-from agents.agent import QAAgent
+from therapist.agent import QAAgent
 
 # hack to suppress warning messages
 import warnings
