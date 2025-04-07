@@ -1,14 +1,18 @@
 from typing import List
 import os
 import traceback
+from datetime import datetime
+import uuid
 
 from dotenv import load_dotenv
 import dspy
 from dspy.retrieve.chromadb_rm import ChromadbRM
 import chromadb
 from chromadb.config import Settings
+# from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
 
+from models import Conversation, Message, init_session
 
 class QAAgent:
 
@@ -17,6 +21,11 @@ class QAAgent:
 
         self._init_lm()
         self._init_embed_retriever()
+
+        self._session = init_session()
+
+        self.message_id = 0
+        self.conversation_id = str(uuid.uuid4())
 
     def _init_lm(self):
         lm = dspy.LM(
@@ -31,6 +40,11 @@ class QAAgent:
         )
 
     def _init_embed_retriever(self):
+        self.embedding = embedding = OllamaEmbeddingFunction(
+            model_name='mxbai-embed-large',
+            url='http://localhost:11434/api/embed',
+        )
+
         client = chromadb.Client(
             Settings(
                 persist_directory="chroma",
@@ -39,19 +53,48 @@ class QAAgent:
         )
         self.embed_coll = client.get_or_create_collection("embedding")
 
-    def _init_db(self):
-        pass
-
     def _create_context(self, message: str):
         """retrieve user context"""
-        return "You're a helpful, professional therapist. You care about people's feeling and know what to ask when they are feeling ok. Your first question is usually: how are you doing and how can I help you today?"
+        return """You're a helpful, professional therapist.
+You care about people's feeling and know what to ask when they are feeling ok.
+Your first question is usually: how are you doing and how can I help you today?"""
 
-    def _save_message(self, message: str):
-        """save the conversation in the dbs"""
+    def _read_history(self, message: str):
         pass
+
+    def summarize_history(self, history: List[str]):
+        pass
+
+    def _save_message(self, role: str, message: str, **kwargs):
+        """save the conversation in the dbs"""
+
+        try:
+            self.embed_coll.add(
+                ids=[str(self.message_id)],
+                metadatas=[{'conversation_id': self.conversation_id, 'role': role}],
+                documents=[message],
+                embeddings=self.embedding(message),
+            )
+
+            self._session.add(
+                Message(
+                    id=self.message_id,
+                    content=message,
+                    created_at=datetime.now(),
+                    conversation_id=self.conversation_id,
+            ))
+            self._session.commit()
+        except Exception as e:
+            self._session.rollback()
+            raise e
+
+        self.message_id += 1
 
     def turn(self, history: List[str], message: str):
         lm_ctx = self._create_context(message)
+
+        # save info
+        self._save_message('user', message)
 
         # call predict
         try:
@@ -61,8 +104,7 @@ class QAAgent:
             print(e)
             raise(e)
 
-        # save info
-        self._save_message(message)
+        self._save_message('assistant', resp.answer)
         return resp.answer
 
     def run(self):
@@ -76,12 +118,7 @@ class QAAgent:
 
                 print("Assistant: ", answer)
                 history.append(answer)
-
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")
-
-
-if __name__ == "__main__":
-    agent = QAAgent()
-
-    agent.run()
+        except Exception as e:
+            raise e
