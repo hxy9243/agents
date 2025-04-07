@@ -30,6 +30,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    role: Mapped[str] = mapped_column(Text)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     is_summary: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -37,6 +38,12 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey('conversations.id'))
 
     conversation: Mapped[Conversation] = relationship(back_populates='messages')
+
+    def __str__(self):
+        return f'[{self.created_at}] {self.role}: {self.content}'
+
+    def __repr__(self):
+        return self.__str__()
 
 
 def init_session():

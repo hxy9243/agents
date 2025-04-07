@@ -51,6 +51,7 @@ class QAAgent:
                 is_persistent=True,
             )
         )
+        self.embedding_model = os.getenv("EMBED_MODEL_NAME")
         self.embed_coll = client.get_or_create_collection("embedding")
 
     def _init_conversation(self):
@@ -94,17 +95,20 @@ Your first question is usually: how are you doing and how can I help you today?"
     def _save_message(self, message: Message, **kwargs):
         """save the conversation in the dbs"""
 
+        message.conversation_id = self.conversation.id
         try:
             self.embed_coll.add(
                 ids=[str(message.id)],
                 metadatas=[
-                    {"conversation_id": self.conversation.id, "role": message.role}
+                    {
+                        "conversation_id": self.conversation.id,
+                        "role": message.role,
+                        "model": self.embedding_model,
+                    }
                 ],
                 documents=[message.content],
                 embeddings=self.embedding([message.content]),
             )
-
-            message.conversation_id = self.conversation.id
 
             self._session.add(message)
             self._session.commit()
@@ -135,7 +139,7 @@ Your first question is usually: how are you doing and how can I help you today?"
     def run(self):
         print(f"Starting conversation: {self.conversation.name}")
 
-        existing_messages = self.query_history()
+        existing_messages = self.query_history(n=50)
         message_id = 0
         if existing_messages:
             message_id = existing_messages[0].id + 1
@@ -146,14 +150,14 @@ Your first question is usually: how are you doing and how can I help you today?"
         history = [m.content for m in existing_messages]
         try:
             while True:
-                user_input = input(r"User: ")
+                user_input = input(r"user: ")
                 message = Message(role="user", content=user_input, id=message_id)
                 history.append(message.content)
 
                 answer = self.turn(history, message)
                 history.append(answer.content)
 
-                print("Assistant: ", answer.content)
+                print(f"[{answer.created_at}] assistant: ", answer.content)
                 message_id = answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
