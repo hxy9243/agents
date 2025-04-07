@@ -9,8 +9,8 @@ import dspy
 from dspy.retrieve.chromadb_rm import ChromadbRM
 import chromadb
 from chromadb.config import Settings
-# from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+# from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
 
 from models import Conversation, Message, init_session
 
@@ -40,9 +40,10 @@ class QAAgent:
         )
 
     def _init_embed_retriever(self):
-        self.embedding = embedding = OllamaEmbeddingFunction(
-            model_name='mxbai-embed-large',
-            url='http://localhost:11434/api/embed',
+        self.embedding = embedding = OpenAIEmbeddingFunction(
+            api_base=os.getenv("LM_BASE_URL"),
+            api_key=os.getenv("LM_API_KEY"),
+            model=os.getenv("EMBED_MODEL_NAME"),
         )
 
         client = chromadb.Client(
@@ -112,9 +113,8 @@ Your first question is usually: how are you doing and how can I help you today?"
         try:
             while True:
                 message = input(r"User: ")
-                history.append(message)
-
                 answer = self.turn(history, message)
+                history.append(message)
 
                 print("Assistant: ", answer)
                 history.append(answer)
