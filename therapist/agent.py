@@ -13,6 +13,7 @@ from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
 from models import Conversation, Message, init_session
 
+
 class QAAgent:
 
     def __init__(self):
@@ -23,8 +24,7 @@ class QAAgent:
 
         self._session = init_session()
 
-        self.message_id = 0
-        self.conversation_id = str(uuid.uuid4())
+        self.conversation = self._init_conversation()
 
     def _init_lm(self):
         lm = dspy.LM(
@@ -53,6 +53,32 @@ class QAAgent:
         )
         self.embed_coll = client.get_or_create_collection("embedding")
 
+    def _init_conversation(self):
+        conversation = (
+            self._session.query(Conversation)
+            .order_by(Conversation.last_updated.desc())
+            .first()
+        )
+
+        if not conversation:
+            name = input("Starting a new conversation, give it a name: ")
+            conversation = Conversation(name=name)
+            self._session.add(conversation)
+            self._session.commit()
+
+        return conversation
+
+    def query_history(self, n=20):
+        messages = (
+            self._session.query(Message)
+            .where(Message.conversation_id == self.conversation.id)
+            .order_by(Message.created_at.desc())
+            .limit(n)
+            .all()
+        )
+
+        return messages
+
     def _create_context(self, message: str):
         """retrieve user context"""
         return """You're a helpful, professional therapist.
@@ -65,58 +91,71 @@ Your first question is usually: how are you doing and how can I help you today?"
     def summarize_history(self, history: List[str]):
         pass
 
-    def _save_message(self, role: str, message: str, **kwargs):
+    def _save_message(self, message: Message, **kwargs):
         """save the conversation in the dbs"""
 
         try:
             self.embed_coll.add(
-                ids=[str(self.message_id)],
-                metadatas=[{'conversation_id': self.conversation_id, 'role': role}],
-                documents=[message],
-                embeddings=self.embedding(message),
+                ids=[str(message.id)],
+                metadatas=[
+                    {"conversation_id": self.conversation.id, "role": message.role}
+                ],
+                documents=[message.content],
+                embeddings=self.embedding([message.content]),
             )
 
-            self._session.add(
-                Message(
-                    id=self.message_id,
-                    content=message,
-                    created_at=datetime.now(),
-                    conversation_id=self.conversation_id,
-            ))
+            message.conversation_id = self.conversation.id
+
+            self._session.add(message)
             self._session.commit()
         except Exception as e:
             self._session.rollback()
             raise e
 
-        self.message_id += 1
+        return message
 
-    def turn(self, history: List[str], message: str):
+    def turn(self, history: List[str], message: Message):
         lm_ctx = self._create_context(message)
 
         # save info
-        self._save_message('user', message)
+        self._save_message(message)
 
         # call predict
         try:
-            resp = self.lm(context=lm_ctx, history=history, message=message)
+            resp = self.lm(context=lm_ctx, history=history, message=message.content)
         except Exception as e:
             traceback.print_exc()
             print(e)
-            raise(e)
+            raise (e)
 
-        self._save_message('assistant', resp.answer)
-        return resp.answer
+        resp = Message(role="assistant", content=resp.answer, id=message.id + 1)
+        self._save_message(resp)
+        return resp
 
     def run(self):
-        history = []
+        print(f"Starting conversation: {self.conversation.name}")
+
+        existing_messages = self.query_history()
+        message_id = 0
+        if existing_messages:
+            message_id = existing_messages[0].id + 1
+
+        for h in reversed(existing_messages):
+            print(h)
+
+        history = [m.content for m in existing_messages]
         try:
             while True:
-                message = input(r"User: ")
-                answer = self.turn(history, message)
-                history.append(message)
+                user_input = input(r"User: ")
+                message = Message(role="user", content=user_input, id=message_id)
+                history.append(message.content)
 
-                print("Assistant: ", answer)
-                history.append(answer)
+                answer = self.turn(history, message)
+                history.append(answer.content)
+
+                print("Assistant: ", answer.content)
+                message_id = answer.id + 1
+
         except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")
         except Exception as e:
