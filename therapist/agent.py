@@ -1,5 +1,6 @@
 from typing import List
 import os
+import sys
 import traceback
 from datetime import datetime
 import uuid
@@ -10,8 +11,12 @@ from dspy.retrieve.chromadb_rm import ChromadbRM
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from rich.console import Console
 
 from models import Conversation, Message, init_session
+
+
+console = Console()
 
 
 class QAAgent:
@@ -136,6 +141,32 @@ Your first question is usually: how are you doing and how can I help you today?"
         self._save_message(resp)
         return resp
 
+    @staticmethod
+    def pprint_message(m: Message):
+        timestamp = m.created_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        if m.role == "assistant":
+            role = f"[bright_cyan][bold]{m.role}[/bold][/bright_cyan]: "
+            content = f"[cyan]{m.content}[/cyan]"
+        elif m.role == "user":
+            role = f"[bright_yellow][bold]{m.role}[/bold][/bright_yellow]: "
+            content = f"{m.content}"
+
+        console.print(
+            f"[bright_black][{timestamp}][/bright_black] " + role + content,
+        )
+
+    @staticmethod
+    def user_input() -> str:
+        user_input = console.input(r"[yellow][bold]user[/bold][/yellow]: ")
+
+        # move cursor up 1 line
+        sys.stdout.write(f'\x1b[1A')
+        # clear line
+        sys.stdout.write('\r\x1b[0K')
+
+        return user_input
+
     def run(self):
         print(f"Starting conversation: {self.conversation.name}")
 
@@ -144,20 +175,27 @@ Your first question is usually: how are you doing and how can I help you today?"
         if existing_messages:
             message_id = existing_messages[0].id + 1
 
-        for h in reversed(existing_messages):
-            print(h)
+        for m in reversed(existing_messages):
+            self.pprint_message(m)
 
         history = [m.content for m in existing_messages]
         try:
             while True:
-                user_input = input(r"user: ")
-                message = Message(role="user", content=user_input, id=message_id)
+                user_input = self.user_input()
+                message = Message(
+                    role="user",
+                    created_at=datetime.now(),
+                    content=user_input,
+                    id=message_id,
+                )
                 history.append(message.content)
+
+                self.pprint_message(message)
 
                 answer = self.turn(history, message)
                 history.append(answer.content)
 
-                print(f"[{answer.created_at}] assistant: ", answer.content)
+                self.pprint_message(answer)
                 message_id = answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
