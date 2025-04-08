@@ -1,4 +1,4 @@
-from therapist.agent import QAAgent
+from therapist.agent import ChatBot
 
 # hack to suppress warning messages
 import warnings
@@ -7,6 +7,6 @@ warnings.filterwarnings("ignore", category=UserWarning, message='.*pydantic seri
 
 
 if __name__ == "__main__":
-    agent = QAAgent()
+    agent = ChatBot()
 
     agent.run()

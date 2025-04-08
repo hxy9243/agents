@@ -19,7 +19,7 @@ from models import Conversation, Message, init_session
 console = Console()
 
 
-class QAAgent:
+class ChatBot:
 
     def __init__(self):
         load_dotenv()
