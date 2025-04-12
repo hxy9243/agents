@@ -137,9 +137,9 @@ Your first question is usually: how are you doing and how can I help you today?"
             print(e)
             raise (e)
 
-        resp = Message(role="assistant", content=resp.answer, id=message.id + 1)
-        self._save_message(resp)
-        return resp
+        answer = Message(role="assistant", content=resp.answer, id=message.id + 1)
+        self._save_message(answer)
+        return answer
 
     @staticmethod
     def pprint_message(m: Message):

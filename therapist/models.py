@@ -34,6 +34,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     is_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    reasoning: Mapped[str] = mapped_column(Text)
 
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey('conversations.id'))
 
