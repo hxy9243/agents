@@ -28,7 +28,7 @@ class ChatBot:
         self.history_threshold = 70
         self.summary_length = 50
 
-        assert self.history_threshold >  self.summary_length
+        assert self.history_threshold > self.summary_length
 
         self._init_lm()
 
@@ -97,7 +97,7 @@ class ChatBot:
         # drop previous messages if there's a summary message
         for i, m in enumerate(messages):
             if m.is_summary:
-                messages = messages[:i+1]
+                messages = messages[: i + 1]
                 break
 
         return list(reversed(messages))
@@ -209,16 +209,20 @@ Your first question is usually: how are you doing and how can I help you today?"
     def run(self):
         print(f"Starting conversation: {self.conversation.name}")
 
-        existing_messages = self.query_history(n=80)
+        existing_messages = self.query_history(n=50)
         if not existing_messages:
-            existing_messages.append(
+            m = self._save_message(
                 Message(
                     id=0,
                     role="assistant",
-                    content="Hello world! I'm happy to help you with any questions or problems",
+                    content=(
+                        "Hello world! I'm here to help you with any questions or problems. "
+                        "What's on your mind right now?"
+                    ),
                     conversation_id=self.conversation.id,
                 )
             )
+            existing_messages.append(m)
 
         for m in existing_messages:
             self.pprint_message(m)
@@ -232,11 +236,13 @@ Your first question is usually: how are you doing and how can I help you today?"
                 message_id += answer.id + 1
 
                 if len(history) > self.history_threshold:
-                    summary = self.summarize_history(message_id, history[:self.summary_length])
+                    summary = self.summarize_history(
+                        message_id, history[: self.summary_length]
+                    )
                     self._save_message(summary)
                     self.pprint_message(summary)
 
-                    history = [summary] + history[self.summary_length:]
+                    history = [summary] + history[self.summary_length :]
                     message_id += answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
