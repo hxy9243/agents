@@ -49,7 +49,7 @@ class ChatBot:
         )
 
     def _init_embed_retriever(self, path: str | Path):
-        self.embedding = embedding = OpenAIEmbeddingFunction(
+        self.embedding = OpenAIEmbeddingFunction(
             api_base=os.getenv("LM_BASE_URL"),
             api_key=os.getenv("LM_API_KEY"),
             model_name=os.getenv("EMBED_MODEL_NAME"),
@@ -64,7 +64,7 @@ class ChatBot:
         self.embedding_model = os.getenv("EMBED_MODEL_NAME")
         self.embed_coll = client.get_or_create_collection("embedding")
 
-    def _init_conversation(self):
+    def _init_conversation(self) -> Conversation:
         conversation = (
             self._session.query(Conversation)
             .order_by(Conversation.last_updated.desc())
@@ -79,7 +79,9 @@ class ChatBot:
 
         return conversation
 
-    def query_history(self, n=20):
+    def query_history(self, n=20) -> List[Message]:
+        """ query the last 20 history in reverse order
+        """
         messages = (
             self._session.query(Message)
             .where(Message.conversation_id == self.conversation.id)
@@ -90,16 +92,16 @@ class ChatBot:
 
         return messages
 
-    def summarize_history(self, history: List[str]):
+    def summarize_history(self, history: List[str]) -> Message:
         pass
 
-    def _create_context(self, message: str):
+    def _create_context(self, message: str) -> str:
         """retrieve user context"""
         return """You're a helpful, professional therapist.
 You care about people's feeling and know what to ask when they are feeling ok.
 Your first question is usually: how are you doing and how can I help you today?"""
 
-    def _save_message(self, message: Message, **kwargs):
+    def _save_message(self, message: Message, **kwargs) -> Message:
         """save the conversation in the dbs"""
 
         message.conversation_id = self.conversation.id
@@ -121,17 +123,20 @@ Your first question is usually: how are you doing and how can I help you today?"
             self._session.commit()
         except Exception as e:
             self._session.rollback()
+            self.embed_coll.delete(ids=[str(message.id)])
             raise e
 
         return message
 
-    def turn(self, history: List[str], message: Message):
-        lm_ctx = self._create_context(message)
-
-        # save info
+    def turn(self, message_id: int, history: List[str]) -> Message:
+        # format and save user message
+        message = self.user_input(message_id)
+        history.append(f"{message.role}: {message.content}")
+        self.pprint_message(message)
         self._save_message(message)
 
         # call predict
+        lm_ctx = self._create_context(message)
         try:
             resp = self.lm(context=lm_ctx, history=history, message=message.content)
         except Exception as e:
@@ -139,10 +144,12 @@ Your first question is usually: how are you doing and how can I help you today?"
             print(e)
             raise (e)
 
-        breakpoint()
-
+        # format and save answer
         answer = Message(role="assistant", content=resp.answer, id=message.id + 1)
         self._save_message(answer)
+        history.append(f"{answer.role}: {answer.content}")
+        self.pprint_message(answer)
+
         return answer
 
     @staticmethod
@@ -161,7 +168,7 @@ Your first question is usually: how are you doing and how can I help you today?"
         )
 
     @staticmethod
-    def user_input() -> str:
+    def user_input(message_id: int) -> str:
         user_input = console.input(r"[yellow][bold]user[/bold][/yellow]: ")
 
         # move cursor up 1 line
@@ -169,38 +176,36 @@ Your first question is usually: how are you doing and how can I help you today?"
         # clear line
         sys.stdout.write("\r\x1b[0K")
 
-        return user_input
+        return Message(
+            id=message_id,
+            role="user",
+            created_at=datetime.now(),
+            content=user_input,
+        )
 
     def run(self):
         print(f"Starting conversation: {self.conversation.name}")
 
         existing_messages = self.query_history(n=50)
-        message_id = 0
-        if existing_messages:
-            message_id = existing_messages[0].id + 1
+        if not existing_messages:
+            existing_messages.append(
+                Message(
+                    id=0,
+                    role="assistant",
+                    content="Hello world! I'm happy to help you with any questions or problems",
+                    conversation_id=self.conversation.id,
+                )
+            )
 
         for m in reversed(existing_messages):
             self.pprint_message(m)
 
+        message_id = existing_messages[0].id + 1
         history = [m.content for m in existing_messages]
         try:
             while True:
-                user_input = self.user_input()
-                message = Message(
-                    role="user",
-                    created_at=datetime.now(),
-                    content=user_input,
-                    id=message_id,
-                )
-                history.append(f"{message.role}: {message.content}")
-
-                self.pprint_message(message)
-
-                answer = self.turn(history, message)
-                history.append(f"{answer.role}: {answer.content}")
-
-                self.pprint_message(answer)
-                message_id = answer.id + 1
+                answer = self.turn(message_id, history)
+                message_id += answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")

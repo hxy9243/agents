@@ -34,13 +34,9 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     reasoning: Mapped[str] = mapped_column(Text, nullable=True, default='')
-
     is_summary: Mapped[bool] = mapped_column(Boolean, default=False)
-    summary_start: Mapped[int] = mapped_column(Integer, nullable=True)
-    summary_end: Mapped[int] = mapped_column(Integer, nullable=True)
 
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey('conversations.id'))
-
     conversation: Mapped[Conversation] = relationship(back_populates='messages')
 
     def __str__(self):
