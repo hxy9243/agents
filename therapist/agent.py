@@ -25,6 +25,11 @@ class ChatBot:
     def __init__(self):
         load_dotenv()
 
+        self.history_threshold = 70
+        self.summary_length = 50
+
+        assert self.history_threshold >  self.summary_length
+
         self._init_lm()
 
         current_file = Path(__file__).resolve()
@@ -80,8 +85,7 @@ class ChatBot:
         return conversation
 
     def query_history(self, n=20) -> List[Message]:
-        """ query the last 20 history in reverse order
-        """
+        """query the last 20 history, and return in natural order"""
         messages = (
             self._session.query(Message)
             .where(Message.conversation_id == self.conversation.id)
@@ -90,10 +94,29 @@ class ChatBot:
             .all()
         )
 
-        return messages
+        # drop previous messages if there's a summary message
+        for i, m in enumerate(messages):
+            if m.is_summary:
+                messages = messages[:i+1]
+                break
 
-    def summarize_history(self, history: List[str]) -> Message:
-        pass
+        return list(reversed(messages))
+
+    def summarize_history(self, message_id: int, history: List[str]) -> Message:
+        summarizer = dspy.Predict("context: str, history: list -> summary: str")
+
+        resp = summarizer(
+            context="Summarize this for me, list the important talking points, and keep it informative and concise.\n"
+            "And based on this conversation, analyze the personality, and biggest trouble faced by the user.\n",
+            history=history,
+        )
+
+        return Message(
+            id=message_id,
+            role="system",
+            content=resp.summary,
+            is_summary=True,
+        )
 
     def _create_context(self, message: str) -> str:
         """retrieve user context"""
@@ -156,7 +179,7 @@ Your first question is usually: how are you doing and how can I help you today?"
     def pprint_message(m: Message):
         timestamp = m.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
-        if m.role == "assistant":
+        if m.role == "assistant" or m.role == "system":
             role = f"[bright_cyan][bold]{m.role}[/bold][/bright_cyan]: "
             content = f"[cyan]{m.content}[/cyan]"
         elif m.role == "user":
@@ -168,7 +191,7 @@ Your first question is usually: how are you doing and how can I help you today?"
         )
 
     @staticmethod
-    def user_input(message_id: int) -> str:
+    def user_input(message_id: int) -> Message:
         user_input = console.input(r"[yellow][bold]user[/bold][/yellow]: ")
 
         # move cursor up 1 line
@@ -186,7 +209,7 @@ Your first question is usually: how are you doing and how can I help you today?"
     def run(self):
         print(f"Starting conversation: {self.conversation.name}")
 
-        existing_messages = self.query_history(n=50)
+        existing_messages = self.query_history(n=80)
         if not existing_messages:
             existing_messages.append(
                 Message(
@@ -197,15 +220,24 @@ Your first question is usually: how are you doing and how can I help you today?"
                 )
             )
 
-        for m in reversed(existing_messages):
+        for m in existing_messages:
             self.pprint_message(m)
 
-        message_id = existing_messages[0].id + 1
+        message_id = existing_messages[-1].id + 1
         history = [m.content for m in existing_messages]
+
         try:
             while True:
                 answer = self.turn(message_id, history)
                 message_id += answer.id + 1
+
+                if len(history) > self.history_threshold:
+                    summary = self.summarize_history(message_id, history[:self.summary_length])
+                    self._save_message(summary)
+                    self.pprint_message(summary)
+
+                    history = [summary] + history[self.summary_length:]
+                    message_id += answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")
