@@ -5,6 +5,10 @@ description = ""
 authors = ["Kevin Hu <hxy9243@gmail.com>"]
 readme = "README.md"
 
+packages = [
+    { include = "therapist", from = "." }
+]
+
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 dspy = "^2.6.16"
@@ -13,6 +17,8 @@ chromadb = "^0.6.3"
 sqlalchemy = "^2.0.40"
 rich = "^14.0.0"
 
+[tool.poetry.scripts]
+therapist = "therapist.chat:main"
 
 [build-system]
 requires = ["poetry-core"]
