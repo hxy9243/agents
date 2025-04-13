@@ -33,8 +33,11 @@ class Message(Base):
     role: Mapped[str] = mapped_column(Text)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-    is_summary: Mapped[bool] = mapped_column(Boolean, default=False)
     reasoning: Mapped[str] = mapped_column(Text)
+
+    is_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    # summary_start: Mapped[int] = mapped_column(Integer)
+    # summary_end: Mapped[int] = mapped_column(Integer)
 
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey('conversations.id'))
 
@@ -47,8 +50,8 @@ class Message(Base):
         return self.__str__()
 
 
-def init_session():
-    engine = create_engine('sqlite:///database.db')
+def init_session(url: str):
+    engine = create_engine(str(url))
     Base.metadata.create_all(engine)
 
     Session = sessionmaker(bind=engine)

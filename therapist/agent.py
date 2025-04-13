@@ -1,5 +1,6 @@
 from typing import List
 import os
+from pathlib import Path
 import sys
 import traceback
 from datetime import datetime
@@ -13,7 +14,7 @@ from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from rich.console import Console
 
-from models import Conversation, Message, init_session
+from therapist.models import Conversation, Message, init_session
 
 
 console = Console()
@@ -25,9 +26,10 @@ class ChatBot:
         load_dotenv()
 
         self._init_lm()
-        self._init_embed_retriever()
 
-        self._session = init_session()
+        database_dir = Path(os.getenv("DATABASE_DIR", "database/"))
+        self._init_embed_retriever(f"{database_dir}/chroma/")
+        self._session = init_session(f"sqlite:///{database_dir}/database.db")
 
         self.conversation = self._init_conversation()
 
@@ -37,13 +39,13 @@ class ChatBot:
             api_key=os.getenv("LM_API_KEY"),
             model=os.getenv("LM_MODEL_NAME"),
         )
-        dspy.configure(lm=lm)
+        dspy.configure(lm=lm, track_usage=True)
 
         self.lm = dspy.ChainOfThought(
-            "context, history, message -> answer",
+            "context: str, history: list, message: str -> answer: str",
         )
 
-    def _init_embed_retriever(self):
+    def _init_embed_retriever(self, path: str | Path):
         self.embedding = embedding = OpenAIEmbeddingFunction(
             api_base=os.getenv("LM_BASE_URL"),
             api_key=os.getenv("LM_API_KEY"),
@@ -52,7 +54,7 @@ class ChatBot:
 
         client = chromadb.Client(
             Settings(
-                persist_directory="chroma",
+                persist_directory=str(path),
                 is_persistent=True,
             )
         )
@@ -137,6 +139,8 @@ Your first question is usually: how are you doing and how can I help you today?"
             print(e)
             raise (e)
 
+        breakpoint()
+
         answer = Message(role="assistant", content=resp.answer, id=message.id + 1)
         self._save_message(answer)
         return answer
@@ -161,9 +165,9 @@ Your first question is usually: how are you doing and how can I help you today?"
         user_input = console.input(r"[yellow][bold]user[/bold][/yellow]: ")
 
         # move cursor up 1 line
-        sys.stdout.write(f'\x1b[1A')
+        sys.stdout.write(f"\x1b[1A")
         # clear line
-        sys.stdout.write('\r\x1b[0K')
+        sys.stdout.write("\r\x1b[0K")
 
         return user_input
 
@@ -188,12 +192,12 @@ Your first question is usually: how are you doing and how can I help you today?"
                     content=user_input,
                     id=message_id,
                 )
-                history.append(message.content)
+                history.append(f"{message.role}: {message.content}")
 
                 self.pprint_message(message)
 
                 answer = self.turn(history, message)
-                history.append(answer.content)
+                history.append(f"{answer.role}: {answer.content}")
 
                 self.pprint_message(answer)
                 message_id = answer.id + 1

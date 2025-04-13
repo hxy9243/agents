@@ -6,7 +6,7 @@ from pydantic_core import PydanticSerializationUnexpectedValue
 warnings.filterwarnings("ignore", category=UserWarning, message='.*pydantic serializer warnings.*')
 
 
-if __name__ == "__main__":
+def main():
     agent = ChatBot()
 
     agent.run()
