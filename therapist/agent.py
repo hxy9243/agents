@@ -27,7 +27,10 @@ class ChatBot:
 
         self._init_lm()
 
-        database_dir = Path(os.getenv("DATABASE_DIR", "database/"))
+        current_file = Path(__file__).resolve()
+        project_top = current_file.parent
+
+        database_dir = project_top / os.getenv("DATABASE_DIR", "database/")
         self._init_embed_retriever(f"{database_dir}/chroma/")
         self._session = init_session(f"sqlite:///{database_dir}/database.db")
 
@@ -87,17 +90,14 @@ class ChatBot:
 
         return messages
 
+    def summarize_history(self, history: List[str]):
+        pass
+
     def _create_context(self, message: str):
         """retrieve user context"""
         return """You're a helpful, professional therapist.
 You care about people's feeling and know what to ask when they are feeling ok.
 Your first question is usually: how are you doing and how can I help you today?"""
-
-    def _read_history(self, message: str):
-        pass
-
-    def summarize_history(self, history: List[str]):
-        pass
 
     def _save_message(self, message: Message, **kwargs):
         """save the conversation in the dbs"""
