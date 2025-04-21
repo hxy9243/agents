@@ -112,6 +112,7 @@ class ChatBot:
 
         resp = summarizer(
             context="Summarize this for me, list the important talking points, and keep it informative and concise.\n"
+            "Be sure to include previous summaries too.\n"
             "And based on this conversation, analyze the personality, and biggest trouble faced by the user.\n",
             history=history,
         )
