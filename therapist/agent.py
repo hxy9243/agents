@@ -27,6 +27,7 @@ class ChatBot:
 
         self.history_threshold = 70
         self.summary_length = 50
+        self.distance_threshold = 0.4
 
         assert self.history_threshold > self.summary_length
 
@@ -124,11 +125,26 @@ class ChatBot:
             is_summary=True,
         )
 
-    def _create_context(self, message: str) -> str:
+    def _create_context(self, message: Message) -> str:
         """retrieve user context"""
-        return """You're a helpful, professional therapist.
+        CONTEXT_PROMPT = """You're a helpful, professional therapist.
 You care about people's feeling and know what to ask when they are feeling ok.
 Your first question is usually: how are you doing and how can I help you today?"""
+        results = self.embed_coll.query(
+            query_embeddings=self.embedding([message.content]),
+            n_results=5,
+            include=["metadatas", "documents", "distances"]
+        )
+
+        # Filter by distance (assuming lower distance is better)
+        filtered_docs = []
+        for doc, distance, metadata in zip(results['documents'][0], results['distances'][0], results['metadatas'][0]):
+            if distance < self.distance_threshold:
+                filtered_docs.append(f'{metadata.get("time")} {metadata["role"]}: {doc}')
+
+        # Concatenate messages
+        context = "\n----\n".join(filtered_docs)
+        return f"{CONTEXT_PROMPT}\n\nRelevant Context in previous conversation:\n{context}"
 
     def _save_message(self, message: Message, **kwargs) -> Message:
         """save the conversation in the dbs"""
@@ -142,6 +158,8 @@ Your first question is usually: how are you doing and how can I help you today?"
                         "conversation_id": self.conversation.id,
                         "role": message.role,
                         "model": self.embedding_model,
+                        "time": str(message.created_at),
+                        "id": message.id,
                     }
                 ],
                 documents=[message.content],
@@ -162,10 +180,11 @@ Your first question is usually: how are you doing and how can I help you today?"
         message = self.user_input(message_id)
         history.append(f"{message.role}: {message.content}")
         self.pprint_message(message)
+        lm_ctx = self._create_context(message)
+
         self._save_message(message)
 
         # call predict
-        lm_ctx = self._create_context(message)
         try:
             resp = self.lm(context=lm_ctx, history=history, message=message.content)
         except Exception as e:
