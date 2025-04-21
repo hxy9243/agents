@@ -94,11 +94,16 @@ class ChatBot:
             .all()
         )
 
-        # drop previous messages if there's a summary message
+        # only include residual length if there's a summary message
+        residual_length = self.history_threshold - self.summary_length
+        summary_index = -1
+
         for i, m in enumerate(messages):
             if m.is_summary:
-                messages = messages[: i + 1]
+                summary_index = i
+            if summary_index != -1 and i > summary_index + residual_length:
                 break
+        messages = messages[: i + 1]
 
         return list(reversed(messages))
 
@@ -242,7 +247,13 @@ Your first question is usually: how are you doing and how can I help you today?"
                     self._save_message(summary)
                     self.pprint_message(summary)
 
-                    history = [summary] + history[self.summary_length :]
+                    residual_length = self.history_threshold - self.summary_length
+
+                    history = (
+                        history[:residual_length]
+                        + [summary]
+                        + history[self.summary_length :]
+                    )
                     message_id += answer.id + 1
 
         except (KeyboardInterrupt, EOFError):
