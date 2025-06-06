@@ -5,6 +5,11 @@ so as to save context.
 
 It saves information in the SQL db and embedding db, for persistence
 and for relevance retrieval.
+
+It saves:
+
+- A short term memory (a list of message in the conversation),
+- A long term memory (LM summarized view of the messages).
 """
 
 from typing import List
@@ -16,7 +21,7 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
-from therapist.models import init_session, Message
+from therapist.models import init_session, Message, Conversation
 
 
 class Memory:
@@ -37,6 +42,24 @@ class Memory:
             ),
         )
 
+        self.conversation = self._init_conversation()
+
+    def _init_conversation(self) -> Conversation:
+        conversation = (
+            self._session
+            .query(Conversation)
+            .order_by(Conversation.last_updated.desc())
+            .first()
+        )
+
+        if not conversation:
+            name = input("Starting a new conversation, give it a name: ")
+            conversation = Conversation(name=name)
+            self._session.add(conversation)
+            self._session.commit()
+
+        return conversation
+
     def _init_db_session(self, path: str | Path):
         self._session = init_session(path)
 
@@ -56,7 +79,7 @@ class Memory:
         self.embedding_model = os.getenv("EMBED_MODEL_NAME")
         self.embed_coll = client.get_or_create_collection("embedding")
 
-    def add(self, message: Message):
+    def save(self, message: Message):
         """
         Add a message to the memory.
         """
@@ -107,7 +130,7 @@ class Memory:
 
     def retrieve(
         self, query: str, limit: int = 5, threshold: float = 0.6
-    ) -> List[Message]:
+    ) -> List[str]:
 
         retrieved = self.embed_coll.query(
             query_embeddings=self.embedding([query]),
