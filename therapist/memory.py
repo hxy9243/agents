@@ -134,13 +134,13 @@ class Memory:
 
         retrieved = self.embed_coll.query(
             query_embeddings=self.embedding([query]),
-            n_results=5,
+            n_results=limit,
             include=["metadatas", "documents", "distances"]
         )
         # Filter by distance (assuming lower distance is better)
         results = []
         for doc, distance, metadata in zip(retrieved['documents'][0], retrieved['distances'][0], retrieved['metadatas'][0]):
-            if distance < self.distance_threshold:
+            if distance < threshold:
                 results.append(f'{metadata.get("time")} {metadata["role"]}: {doc}')
 
         return results
