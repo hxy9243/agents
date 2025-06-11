@@ -5,11 +5,6 @@ so as to save context.
 
 It saves information in the SQL db and embedding db, for persistence
 and for relevance retrieval.
-
-It saves:
-
-- A short term memory (a list of message in the conversation),
-- A long term memory (LM summarized view of the messages).
 """
 
 from typing import List
@@ -25,6 +20,15 @@ from therapist.models import init_session, Message, Conversation
 
 
 class Memory:
+    """
+    Memory saves the conversation in
+    It saves:
+
+    - A short term memory: a list of message in the conversation, you can
+      query by listing the latest memory, or retrieve by embedding similarity.
+    - A long term memory: LM summarized view of the messages.
+    """
+
     def __init__(
         self,
         persistence_path: str,
@@ -32,14 +36,17 @@ class Memory:
     ):
         self.persistence_path = persistence_path
 
+        os.makedirs(persistence_path, exist_ok=True)
+
         self._init_db_session(f"sqlite:///{persistence_path}/database.db")
         self._init_embed_retriever(f"{persistence_path}/chroma/")
 
         self.summarizer = dspy.Predict(
-            "history: list -> summary: str",
+            "messages: list -> summary: str",
             instructions=(
                 "Summarize the conversation history, "
-                "keep all the key information and focus on the user characteristics"
+                "keep all the key information and focus on the user characteristics. "
+                "And list the conversation highlights in bullet points."
             ),
         )
 
@@ -47,12 +54,11 @@ class Memory:
         self.short_term = []
         self.short_term_limit = short_term_limit
 
-        assert self.history_limit > 0
+        assert self.short_term_limit > 0
 
     def _init_conversation(self) -> Conversation:
         conversation = (
-            self._session
-            .query(Conversation)
+            self._session.query(Conversation)
             .order_by(Conversation.last_updated.desc())
             .first()
         )
@@ -89,7 +95,13 @@ class Memory:
         Add a message to the memory.
         """
         message.conversation_id = self.conversation.id
+
         try:
+            # saves in DB
+            self._session.add(message)
+            self._session.flush()
+
+            # saves in embedding
             self.embed_coll.add(
                 ids=[str(message.id)],
                 metadatas=[
@@ -105,7 +117,6 @@ class Memory:
                 embeddings=self.embedding([message.content]),
             )
 
-            self._session.add(message)
             self._session.commit()
         except Exception as e:
             self._session.rollback()
@@ -131,23 +142,32 @@ class Memory:
         return list(reversed(messages))
 
     def summarize(self, messages: List[Message]) -> Message:
-        return self.summarizer([m.content for m in messages])
+        """
+        Summarize the messages from the memory.
+        """
+        content = self.summarizer(messages=[m.content for m in messages])
+        return Message(
+            role="memory",
+            content=content.summary,
+            is_summary=True,
+        )
 
     def get_long_term(self, limit: int = 10):
         return self.get(limit=limit, is_summary=True)
 
-    def retrieve(
-        self, query: str, limit: int = 5, threshold: float = 0.6
-    ) -> List[str]:
-
+    def retrieve(self, query: str, limit: int = 5, threshold: float = 0.6) -> List[str]:
         retrieved = self.embed_coll.query(
             query_embeddings=self.embedding([query]),
             n_results=limit,
-            include=["metadatas", "documents", "distances"]
+            include=["metadatas", "documents", "distances"],
         )
         # Filter by distance (assuming lower distance is better)
         results = []
-        for doc, distance, metadata in zip(retrieved['documents'][0], retrieved['distances'][0], retrieved['metadatas'][0]):
+        for doc, distance, metadata in zip(
+            retrieved["documents"][0],
+            retrieved["distances"][0],
+            retrieved["metadatas"][0],
+        ):
             if distance < threshold:
                 results.append(f'{metadata.get("time")} {metadata["role"]}: {doc}')
 

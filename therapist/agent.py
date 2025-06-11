@@ -1,4 +1,3 @@
-from typing import List
 import os
 from pathlib import Path
 import sys
@@ -7,12 +6,9 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 import dspy
-import chromadb
-from chromadb.config import Settings
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from rich.console import Console
 
-from therapist.models import Conversation, Message, init_session
+from therapist.models import Message
 from therapist.memory import Memory
 
 console = Console()
@@ -23,22 +19,21 @@ class ChatBot:
     def __init__(self):
         load_dotenv()
 
-        self.short_term_threshold = 70
-        self.summary_threshold = 50
+        self.short_term_limit = 50
+        self.summary_threshold = 5
 
-        assert self.short_term_threshold > self.summary_length
+        assert self.short_term_limit > self.summary_threshold
 
         current_file = Path(__file__).resolve()
         project_top = current_file.parent
         database_dir = project_top / os.getenv("DATABASE_DIR", "database/")
 
-        # self._init_embed_retriever(f"{database_dir}/chroma/")
-        # self._session = init_session(f"sqlite:///{database_dir}/database.db")
-
         self._init_lm()
 
-        self.memory = Memory(persistence_path=database_dir)
-        self.conversation = self._init_conversation()
+        self.memory = Memory(
+            persistence_path=database_dir,
+            short_term_limit=self.short_term_limit,
+        )
 
     def _init_lm(self):
         CONTEXT_PROMPT = (
@@ -70,15 +65,16 @@ class ChatBot:
 
         # call predict
         try:
+
             resp = self.lm(
-                memory=self.memory.get_summaries(),
+                memory=self.memory.get_long_term(),
                 relative_context=self.memory.retrieve(query=message.content),
                 messages=self.memory.get(),
             )
         except Exception as e:
             traceback.print_exc()
             print(e)
-            raise (e)
+            raise e
 
         # format and save answer
         answer = Message(role="assistant", content=resp.answer)
@@ -96,6 +92,12 @@ class ChatBot:
             content = f"[cyan]{m.content}[/cyan]"
         elif m.role == "user":
             role = f"[bright_yellow][bold]{m.role}[/bold][/bright_yellow]: "
+            content = f"{m.content}"
+        elif m.role == "memory":
+            role = f"[pink][bold]{m.role}[/bold][/pink]: "
+            content = f"{m.content}"
+        else:
+            role = f"[grey][bold]{m.role}[/bold][/grey]: "
             content = f"{m.content}"
 
         console.print(
@@ -119,12 +121,13 @@ class ChatBot:
 
     def maybe_summary(self):
         """create long term memory by summarizing short term message short_term"""
-        last_summary = self.memory.get_summaries(limit=1)
+        last_summary = self.memory.get_long_term(limit=1)
         last_summary_id = 0
         if last_summary:
-            last_summary_id = last_summary.id
+            last_summary_id = last_summary[0].id
 
         short_term = self.memory.get()
+
         if short_term[-1].id - last_summary_id > self.summary_threshold:
             summary = self.memory.summarize(short_term)
             return summary
@@ -132,19 +135,17 @@ class ChatBot:
         return None
 
     def run(self):
-        print(f"Starting conversation: {self.conversation.name}")
+        print(f"Starting conversation: {self.memory.conversation.name}")
 
         existing_messages = self.memory.get(limit=50)
         if not existing_messages:
             m = self.memory.save(
                 Message(
-                    id=0,
                     role="assistant",
                     content=(
                         "Hello world! I'm here to help you with any questions or problems. "
                         "What's on your mind right now?"
                     ),
-                    conversation_id=self.conversation.id,
                 )
             )
             existing_messages.append(m)
