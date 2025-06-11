@@ -23,10 +23,10 @@ class ChatBot:
     def __init__(self):
         load_dotenv()
 
-        self.history_threshold = 70
+        self.short_term_threshold = 70
         self.summary_threshold = 50
 
-        assert self.history_threshold > self.summary_length
+        assert self.short_term_threshold > self.summary_length
 
         current_file = Path(__file__).resolve()
         project_top = current_file.parent
@@ -61,7 +61,6 @@ class ChatBot:
             instructions=CONTEXT_PROMPT,
         )
 
-
     def turn(self) -> Message:
         # format and save user message
         message = self.user_input()
@@ -74,7 +73,7 @@ class ChatBot:
             resp = self.lm(
                 memory=self.memory.get_summaries(),
                 relative_context=self.memory.retrieve(query=message.content),
-                messages=self.memory.get_history(),
+                messages=self.memory.get(),
             )
         except Exception as e:
             traceback.print_exc()
@@ -119,15 +118,15 @@ class ChatBot:
         )
 
     def maybe_summary(self):
-        """create long term memory by summarizing short term message history"""
+        """create long term memory by summarizing short term message short_term"""
         last_summary = self.memory.get_summaries(limit=1)
         last_summary_id = 0
         if last_summary:
             last_summary_id = last_summary.id
 
-        history = self.memory.get_history()
-        if  history[-1].id - last_summary_id > self.summary_threshold:
-            summary = self.memory.summarize()
+        short_term = self.memory.get()
+        if short_term[-1].id - last_summary_id > self.summary_threshold:
+            summary = self.memory.summarize(short_term)
             return summary
 
         return None
@@ -153,11 +152,10 @@ class ChatBot:
         for m in existing_messages:
             self.pprint_message(m)
 
-        self.memory.init_history(existing_messages)
-
         try:
             while True:
                 self.turn()
+
                 summary = self.maybe_summary()
                 if summary:
                     self.memory.save(summary)

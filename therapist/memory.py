@@ -28,7 +28,7 @@ class Memory:
     def __init__(
         self,
         persistence_path: str,
-        history_limit: int = 30,
+        short_term_limit: int = 30,
     ):
         self.persistence_path = persistence_path
 
@@ -44,9 +44,8 @@ class Memory:
         )
 
         self.conversation = self._init_conversation()
-        self.history = []
-
-        self.history_limit = history_limit
+        self.short_term = []
+        self.short_term_limit = short_term_limit
 
         assert self.history_limit > 0
 
@@ -85,12 +84,6 @@ class Memory:
         self.embedding_model = os.getenv("EMBED_MODEL_NAME")
         self.embed_coll = client.get_or_create_collection("embedding")
 
-    def get_history(self) -> List[str]:
-        return self.history
-
-    def init_history(self, messages: List[Message]):
-        self.history = [m.content for m in messages]
-
     def save(self, message: Message):
         """
         Add a message to the memory.
@@ -119,10 +112,6 @@ class Memory:
             self.embed_coll.delete(ids=[str(message.id)])
             raise e
 
-        self.history.append(message)
-        if len(self.history) > self.history_limit:
-            self.history.pop(0)
-
         return message
 
     def get(self, limit: int = 50, is_summary: bool = False) -> list[Message]:
@@ -144,7 +133,7 @@ class Memory:
     def summarize(self, messages: List[Message]) -> Message:
         return self.summarizer([m.content for m in messages])
 
-    def get_summaries(self, limit: int = 10):
+    def get_long_term(self, limit: int = 10):
         return self.get(limit=limit, is_summary=True)
 
     def retrieve(
