@@ -141,8 +141,8 @@ class Memory:
         )
         return list(reversed(messages))
 
-    def summarize(self) -> Message:
-        return self.summarizer(history=self.history)
+    def summarize(self, messages: List[Message]) -> Message:
+        return self.summarizer([m.content for m in messages])
 
     def get_summaries(self, limit: int = 10):
         return self.get(limit=limit, is_summary=True)
