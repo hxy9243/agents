@@ -19,8 +19,8 @@ class ChatBot:
     def __init__(self):
         load_dotenv()
 
-        self.short_term_limit = 50
-        self.summary_threshold = 5
+        self.short_term_limit = 30
+        self.summary_threshold = 15
 
         assert self.short_term_limit > self.summary_threshold
 
