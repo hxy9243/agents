@@ -14,10 +14,14 @@ It breaks the process into the following agents:
 - Summary: summarize and generate the final report
 """
 
-from typing import List
+from typing import List, Dict
 import os
+import sys
 from urllib.parse import urlparse
 import json
+from pathlib import Path
+import logging
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 import requests
@@ -26,14 +30,22 @@ import dspy
 from dspy import Signature, Module, Tool
 from exa_py import Exa
 
+
 load_dotenv()
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
 
 lm = dspy.LM(
     api_base=os.getenv("LM_BASE_URL"),
     api_key=os.getenv("LM_API_KEY"),
     model=os.getenv("LM_MODEL_NAME"),
 )
-dspy.configure(lm=lm, track_usage=True)
+dspy.configure(lm=lm, track_usage=False)
 
 
 class SearchAgentSignature(Signature):
@@ -46,9 +58,10 @@ class SearchAgentSignature(Signature):
     search_terms: List[str] = dspy.OutputField(
         desc=(
             "List of the search terms for the search engine to research more about the company, "
-            "including product, funding, customers, etc"
+            "including investors, product, funding, customers, competitors, etc"
         )
     )
+
 
 class SearchAgent(Module):
     def __init__(self):
@@ -75,28 +88,51 @@ class SearchAgent(Module):
         )
         return [f"{r.url}: {r.title}" for r in resp.results]
 
-    def forward(self, search_term: str) -> List[str]:
+    def _load_results(self, dir: str):
+        for filepath in Path(dir).glob("*"):
+            if filepath.is_file():
+                self.search_results[filepath.name] = filepath.read_text()
+        return self.search_results
+
+    def _save_results(self, dir: str):
+        for key, val in self.search_results.items():
+            # sanitize the url to be a valid filename, remove scheme
+            key = urlparse(key).netloc + urlparse(key).path
+            key = key.replace("/", "_").replace(":", "_")
+
+            with (Path(dir) / key).open(mode="w") as f:
+                f.write(val)
+
+    def forward(self, search_term: str) -> Dict[str, str]:
         try:
             pred = self.lm(search_term=search_term)
         except Exception as e:
             print(e)
             breakpoint()
 
-        print(f"researching company name: {pred.company_name} on {pred.company_url}\n====")
-
-        print(
-            f"To continue research, additional search terms could be:"
+        logging.info(
+            f"researching company name: {pred.company_name} on {pred.company_url}\n===="
         )
-        for r in pred.search_terms:
-            print('  ' + r)
-
-        with open("search_results.json", "w") as f:
-            json.dump(self.search_results, fp=f)
-
+        logging.info(
+            f"To continue research, additional search terms could be: {pred.search_terms}"
+        )
         with open("history.txt", "w") as f:
-            f.write('{}'.format(self.lm.history))
+            f.write("{}".format(self.lm.history))
 
-        return pred
+        company_name = pred.company_name.replace(" ", "_").replace("/", "_")
+        cache_dir = Path("results") / company_name
+
+        if Path(cache_dir).exists():
+            logging.info(f"loading existing results from {cache_dir}...")
+            self._load_results(cache_dir)
+        else:
+            Path(cache_dir).mkdir(parents=True)
+            for term in pred.search_terms:
+                logging.info(f"searching for {term}...")
+                self.search(term, num_results=5)
+
+            self._save_results(cache_dir)
+        return self.search_results
 
 
 class CompanyResearchAgent(Module):
@@ -107,7 +143,10 @@ class CompanyResearchAgent(Module):
 def main():
     search = SearchAgent()
 
-    search("sambanova")
+    results = search("sambanova")
+
+    for k, v in results.items():
+        print(f"{k}: {v}")
 
 
 main()
