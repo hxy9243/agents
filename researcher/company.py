@@ -88,20 +88,13 @@ class SearchAgent(Module):
         )
         return [f"{r.url}: {r.title}" for r in resp.results]
 
-    def _load_results(self, dir: str):
-        for filepath in Path(dir).glob("*"):
-            if filepath.is_file():
-                self.search_results[filepath.name] = filepath.read_text()
-        return self.search_results
+    def _load_results(self, path: str):
+        with open(path, "r") as f:
+            self.search_results = json.load(f)
 
-    def _save_results(self, dir: str):
-        for key, val in self.search_results.items():
-            # sanitize the url to be a valid filename, remove scheme
-            key = urlparse(key).netloc + urlparse(key).path
-            key = key.replace("/", "_").replace(":", "_")
-
-            with (Path(dir) / key).open(mode="w") as f:
-                f.write(val)
+    def _save_results(self, path: str):
+        with open(path, "w") as f:
+            json.dump(self.search_results, f, indent=4)
 
     def forward(self, search_term: str) -> Dict[str, str]:
         try:
@@ -120,18 +113,17 @@ class SearchAgent(Module):
             f.write("{}".format(self.lm.history))
 
         company_name = pred.company_name.replace(" ", "_").replace("/", "_")
-        cache_dir = Path("results") / company_name
+        cache_path = Path("results") / (company_name + ".json")
 
-        if Path(cache_dir).exists():
-            logging.info(f"loading existing results from {cache_dir}...")
-            self._load_results(cache_dir)
+        if Path(cache_path).exists():
+            logging.info(f"loading existing results from {cache_path}...")
+            self._load_results(cache_path)
         else:
-            Path(cache_dir).mkdir(parents=True)
             for term in pred.search_terms:
                 logging.info(f"searching for {term}...")
                 self.search(term, num_results=5)
 
-            self._save_results(cache_dir)
+            self._save_results(cache_path)
         return self.search_results
 
 
@@ -143,7 +135,7 @@ class CompanyResearchAgent(Module):
 def main():
     search = SearchAgent()
 
-    results = search("sambanova")
+    results = search("groq")
 
     for k, v in results.items():
         print(f"{k}: {v}")
