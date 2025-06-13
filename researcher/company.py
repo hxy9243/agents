@@ -1,0 +1,113 @@
+"""
+The company research agent is designed specifically for gathering
+a company's information.
+
+It breaks the process into the following agents:
+
+- Research and info gathering:
+  - Exa: search and crawl API
+- Data mining: summarize each piece of research results and data extraction,
+  clean up and summarize the raw data
+- Analysis:
+  - Analyze and provide insight on each aspect of the company
+  - Generate tags and categorization of the company
+- Summary: summarize and generate the final report
+"""
+
+from typing import List
+import os
+from urllib.parse import urlparse
+import json
+
+from dotenv import load_dotenv
+import requests
+from bs4 import BeautifulSoup
+import dspy
+from dspy import Signature, Module, Tool
+from exa_py import Exa
+
+load_dotenv()
+
+lm = dspy.LM(
+    api_base=os.getenv("LM_BASE_URL"),
+    api_key=os.getenv("LM_API_KEY"),
+    model=os.getenv("LM_MODEL_NAME"),
+)
+dspy.configure(lm=lm, track_usage=True)
+
+
+class SearchAgentSignature(Signature):
+    search_term: str = dspy.InputField(
+        desc="The company name or the URL link mentioning the company"
+    )
+
+    company_name: str = dspy.OutputField(desc="The company name")
+    company_url: str = dspy.OutputField(desc="The URL of the company")
+    search_terms: List[str] = dspy.OutputField(
+        desc=(
+            "List of the search terms for the search engine to research more about the company, "
+            "including product, funding, customers, etc"
+        )
+    )
+
+class SearchAgent(Module):
+    def __init__(self):
+        super().__init__()
+
+        self.exa = Exa(api_key=os.environ.get("EXA_API_KEY"))
+        self.lm = dspy.ReAct(
+            signature=SearchAgentSignature,
+            tools=[
+                self.search,
+            ],
+        )
+        self.search_results = {}
+
+    def search(self, search: str, num_results: int = 5) -> List[str]:
+        resp = self.exa.search_and_contents(
+            search,
+            text=True,
+            num_results=num_results,
+        )
+
+        self.search_results.update(
+            {r.url: f"{r.url}: {r.title} {r.text}" for r in resp.results}
+        )
+        return [f"{r.url}: {r.title}" for r in resp.results]
+
+    def forward(self, search_term: str) -> List[str]:
+        try:
+            pred = self.lm(search_term=search_term)
+        except Exception as e:
+            print(e)
+            breakpoint()
+
+        print(f"researching company name: {pred.company_name} on {pred.company_url}\n====")
+
+        print(
+            f"To continue research, additional search terms could be:"
+        )
+        for r in pred.search_terms:
+            print('  ' + r)
+
+        with open("search_results.json", "w") as f:
+            json.dump(self.search_results, fp=f)
+
+        with open("history.txt", "w") as f:
+            f.write('{}'.format(self.lm.history))
+
+        return pred
+
+
+class CompanyResearchAgent(Module):
+    def __init__(self):
+        super().__init__()
+
+
+def main():
+    search = SearchAgent()
+
+    search("sambanova")
+
+
+main()
