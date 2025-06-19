@@ -45,6 +45,9 @@ lm = dspy.LM(
     api_key=os.getenv("LM_API_KEY"),
     model="openai/Llama-4-Maverick-17B-128E-Instruct",
 )
+lm = dspy.LM(model="gemini/gemini-2.0-flash", api_key=os.getenv("GOOGLE_API_KEY"))
+
+
 dspy.configure(lm=lm, track_usage=False)
 
 
@@ -107,13 +110,16 @@ class SearchAgent(Module):
 class InfoExtractAgentSignature(Signature):
     """The information extraction agent cleans up the raw text from the URL, generates a report, and extract useful information from the result.
     It should keep most of the text instead of a short summary.
+
+    It's critical that each paragraph should include the URL as a markdown link, and the text should be in markdown format, so that each
+    statement can be referenced back to the original source URL.
     """
 
     topic: str = dspy.InputField(
         desc="The topic of the company, e.g., Overview, Investors, Funding, Product, Customers, Competitors"
     )
     search_results: Dict[str, Dict] = dspy.InputField(
-        desc="The search results from the search agent"
+        desc="The search results from the search agent, from URL to the report text"
     )
 
     text: str = dspy.OutputField(
@@ -187,6 +193,7 @@ class ReportAgentSignature(Signature):
     - Competitors: a summary of the company's competitors, including their names and links to their profiles
 
     The rewrite result should keep the URLs in the text as markdown links, as references for the information provided.
+    If there are multiple URLs referenced, they should be listed separately.
     """
 
     paragraphs: List[str] = dspy.InputField(
@@ -276,11 +283,11 @@ class CompanyResearcher:
 
             texts[topic] = extract_results.text
             tags.update(extract_results.tags)
-            extracted_info.update(extract_results.info)
+            extracted_info[topic] = extract_results.info
 
-        logging.info("Search results:", json.dumps(texts, indent=2))
-        logging.info("Extracted info:", json.dumps(extracted_info, indent=2))
-        logging.info("Tags:", list(tags))
+        logging.info("Search results: " + json.dumps(texts, indent=2))
+        logging.info("Extracted info: " + json.dumps(extracted_info, indent=2))
+        logging.info(f"Tags: {tags}")
 
         # clean up and rewrite the paragraphs
         rewritten_results = []
@@ -289,7 +296,9 @@ class CompanyResearcher:
 
             rewrite_agent = RewriteAgent()
             rewritten_results.append(
-                rewrite_agent(input_text=text, extracted_info=extracted_info)
+                rewrite_agent(
+                    input_text=text, extracted_info=extracted_info[topic],
+                ).rewritten_results
             )
 
         # generate the final report
@@ -309,15 +318,24 @@ class CompanyResearcher:
 def main():
     researcher = CompanyResearcher()
 
-    search_term = "cerebras"
+    search_term = "replit"
     results = researcher.run(search_term)
 
     print(f"Reports: {results['reports']}")
-    for paragraph in results['summaries']:
+    for paragraph in results["summaries"]:
         print(f"Summary: {paragraph}")
 
     print(f"Tags: {results['tags']}")
     print(f"Info: {results['info']}")
+
+    with (Path("results") / (search_term + "-final_report.json")).open("w") as f:
+        json.dump(results, f, indent=4)
+
+    with (Path("results") / (search_term + "-final_report.md")).open("w") as f:
+        f.write(results["reports"])
+        for paragraph in results["summaries"]:
+            f.write("\n\n")
+            f.write(paragraph)
 
 
 main()
