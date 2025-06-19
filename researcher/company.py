@@ -181,6 +181,7 @@ class RewriteAgent(Module):
 class ReportAgentSignature(Signature):
     """The report agent generates a final report in markdown format based on each paragraph and extracted info.
     It should include the section title and content, rearrange the paragraphs if necessary for readability.
+    Do not include backquotes or code blocks in the report, as it should be a readable markdown report.
 
     It should generate a final report that best reflect the search results and content, for example:
 
