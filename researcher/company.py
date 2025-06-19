@@ -179,7 +179,8 @@ class ReportAgentSignature(Signature):
     It should generate a final report that best reflect the search results and content, for example:
 
     - Overview: a summary of the company, including its mission, vision, and values
-    - Product: very detailed explanation of the company's products, including their features and benefits
+    - Product: very detailed explanation of the company's products, including their features, user experience, and benefits.
+        It should be as much detailed as possible.
     - Investors: a list of the company's investors, with their names and links to their profiles
     - Funding: a list of the company's funding history, including the amount raised and the investors involved
     - Customers: a detailed breakdown of the company's customers, including their names and links to their profiles
@@ -299,6 +300,7 @@ class CompanyResearcher:
 
         return {
             "reports": report.report,
+            "summaries": rewritten_results,
             "tags": list(tags),
             "info": extracted_info,
         }
@@ -307,10 +309,13 @@ class CompanyResearcher:
 def main():
     researcher = CompanyResearcher()
 
-    search_term = "vapi"
+    search_term = "cerebras"
     results = researcher.run(search_term)
 
     print(f"Reports: {results['reports']}")
+    for paragraph in results['summaries']:
+        print(f"Summary: {paragraph}")
+
     print(f"Tags: {results['tags']}")
     print(f"Info: {results['info']}")
 
