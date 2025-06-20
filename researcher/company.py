@@ -14,20 +14,17 @@ It breaks the process into the following agents:
 - Summary: summarize and generate the final report
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
 import sys
-from urllib.parse import urlparse
 import json
 from pathlib import Path
 import logging
-from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-import requests
-from bs4 import BeautifulSoup
 import dspy
-from dspy import Signature, Module, Tool
+from dspy import Signature, Module
+
 from exa_py import Exa
 
 
@@ -112,7 +109,7 @@ class InfoExtractAgentSignature(Signature):
     It should keep most of the text instead of a short summary.
 
     It's critical that each paragraph should include the URL as a markdown link, and the text should be in markdown format, so that each
-    statement can be referenced back to the original source URL.
+    statement can be referenced back to the original source URL fullpath.
     """
 
     topic: str = dspy.InputField(
@@ -125,11 +122,13 @@ class InfoExtractAgentSignature(Signature):
     text: str = dspy.OutputField(
         desc="The cleaned up version of the raw text from URL scrape"
     )
-    tags: List[str] = dspy.OutputField(
-        desc="The tags and categorization of the company based on the search results"
+    tags: Optional[List[str]] = dspy.OutputField(
+        desc="The tags and categorization of the company based on the search results",
+        default=[],
     )
-    info: Dict[str, str] = dspy.OutputField(
-        desc="The detailed information about the company, including investors, funding, product, funding, customers, competitors, etc"
+    info: Optional[Dict[str, str]] = dspy.OutputField(
+        desc="The detailed information about the company, including investors, funding, product, funding, customers, competitors, etc",
+        default={},
     )
 
 
@@ -319,7 +318,7 @@ class CompanyResearcher:
 def main():
     researcher = CompanyResearcher()
 
-    search_term = "databricks"
+    search_term = "sandboxaq"
     results = researcher.run(search_term)
 
     print(f"Reports: {results['reports']}")
@@ -339,7 +338,6 @@ def main():
 
     with (Path("results") / (search_term + "-final_report.md")).open("w") as f:
         f.write(results["reports"])
-
 
 
 main()
