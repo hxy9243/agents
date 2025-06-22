@@ -37,7 +37,6 @@ load_dotenv()
 
 
 lm = dspy.LM(
-    api_base=os.getenv("LM_BASE_URL", None),
     model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.5-flash"),
     api_key=os.getenv("LM_API_KEY"),
     max_tokens=16384,
@@ -206,9 +205,12 @@ class RewriteAgent(Module):
 
 
 class TableFormatterAgentSignature(Signature):
-    """The table formatter agent formats the extracted information into a markdown table format.
-    It should generate a table with the following columns:
-    - Field: the field of the information, e.g., Founded Year, Field, HQ, CEO and leadership, Key Products, Customers, Fund Raised, Fund Round, Investors, Valuation
+    """The table formatter agent formats the extracted information into a dictionary format,
+    removing any unnecessary information.
+
+    It should return a dict with the following fields:
+    - Field: the field of the information, e.g., Founded Year, Field, HQ, CEO and leadership, Key Products, Customers,
+        Fund Raised, Fund Round, Investors, Valuation
     - Value: the value of the information
     """
 
@@ -225,8 +227,8 @@ class TableFormatterAgentSignature(Signature):
         )
     )
 
-    formatted_table: str = dspy.OutputField(
-        desc="The formatted table in markdown format"
+    formatted_dict: Dict[str, str] = dspy.OutputField(
+        desc="The formatted dictionary of key information"
     )
 
 
@@ -338,6 +340,13 @@ class StartupResearcher:
 
         return results
 
+    def _format_table(self, info: Dict[str, Any]) -> str:
+        table = "| Field | Info |\n"
+        table += "| --- | --- |\n"
+        for key, value in info.items():
+            table += f"| {key} | {value} |\n"
+        return table
+
     def _format_references(self, search_results: Dict[str, Any]) -> str:
         """Format the search results into a readable report."""
         references = ""
@@ -419,7 +428,11 @@ class StartupResearcher:
             k: v for d in extracted_info.values() for k, v in d.items() if d is not None
         }
 
-        table = table_formatter(extracted_info=flat_extracted_info)
+        key_info = table_formatter(extracted_info=flat_extracted_info)
+        key_info = key_info.formatted_dict
+
+        # format the dictionary into a markdown table
+        formatted_table = self._format_table(key_info)
 
         # generate the final report text
         report = self.report_agent(
@@ -429,8 +442,8 @@ class StartupResearcher:
 
         report_text = (
             report.report
-            + "\n\nInformation Table\n\n"
-            + table.formatted_table
+            + "\n\n# Information Table\n\n"
+            + formatted_table
             + "\n\n# References\n\n"
             + self._format_references(results)
         )
