@@ -292,13 +292,19 @@ class StartupResearcher:
             f"To continue research, additional search terms could be: {initial_results['search_terms']}"
         )
 
-        cont = input(
-            "Do you want to continue with the search? (y/n): "
-        ).strip().lower()
-        if cont != "y" and cont != "yes":
+        # confirm with the user to deep dive on the search
+        try:
+            cont = input(
+                "Do you want to continue with the search? (y/n): "
+            ).strip().lower()
+            if cont != "y" and cont != "yes":
+                logger.info("Exiting the research process...")
+                return {}
+        except (EOFError, KeyboardInterrupt):
             logger.info("Exiting the research process...")
             return {}
 
+        # deep dive
         results = self.further_search(initial_results)
         texts = dict()
         tags = set()
