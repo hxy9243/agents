@@ -16,10 +16,8 @@ It breaks the process into the following agents:
 
 from typing import List, Dict, Any, Optional
 import os
-import sys
 import json
 from pathlib import Path
-import logging
 
 from dotenv import load_dotenv
 import dspy
@@ -27,21 +25,20 @@ from dspy import Signature, Module
 
 from exa_py import Exa
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+logger.setLevel(logging.INFO)
 
 load_dotenv()
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 
-
-lm = dspy.LM(
-    api_base=os.getenv("LM_BASE_URL"),
-    api_key=os.getenv("LM_API_KEY"),
-    model="openai/Llama-4-Maverick-17B-128E-Instruct",
-)
 lm = dspy.LM(model="gemini/gemini-2.0-flash", api_key=os.getenv("GOOGLE_API_KEY"))
 
 
@@ -51,7 +48,7 @@ dspy.configure(lm=lm, track_usage=False)
 exa = Exa(api_key=os.environ.get("EXA_API_KEY"))
 
 
-def search(search, num_results: int = 5) -> List[str]:
+def exa_search(search, num_results: int = 5) -> List[str]:
     resp = exa.search_and_contents(
         search,
         text=True,
@@ -69,7 +66,15 @@ def search(search, num_results: int = 5) -> List[str]:
 
 
 class SearchAgentSignature(Signature):
-    """The search agent queries the search term and returns the search terms for the search engine."""
+    """The search agent queries the search term and returns the search terms for the search engine, including:
+
+    - Funding
+    - Leadership
+    - Product or Service Details
+    - Customers
+    - Latest News
+    - Other information if available
+    """
 
     search_term: str = dspy.InputField(
         desc="The company name or the URL link mentioning the company"
@@ -77,10 +82,11 @@ class SearchAgentSignature(Signature):
 
     company_name: str = dspy.OutputField(desc="The company name")
     company_url: str = dspy.OutputField(desc="The URL of the company")
+    summary: str = dspy.OutputField(desc="A short summary of the company")
     search_terms: List[str] = dspy.OutputField(
         desc=(
             "List of the search terms for the search engine to research more about the company, "
-            "including investors, product, funding, customers, competitors, etc"
+            "including funding, leadership, product and service details, customers, etc."
         )
     )
 
@@ -91,11 +97,13 @@ class SearchAgent(Module):
 
         self.lm = dspy.ReAct(
             signature=SearchAgentSignature,
-            tools=[search],
+            tools=[exa_search],
         )
         self.search_results = {}
 
     def forward(self, search_term: str) -> Dict[str, Dict]:
+        logger.info(f"Running search agent with search term: {search_term}")
+
         pred = self.lm(search_term=search_term)
 
         with open("history.txt", "w") as f:
@@ -139,6 +147,8 @@ class InfoExtractAgent(Module):
         self.lm = dspy.ChainOfThought(signature=InfoExtractAgentSignature)
 
     def forward(self, topic: str, search_results: Dict[str, str]) -> Dict[str, str]:
+        logger.info(f"Running info extract agent with search term: {search_results}")
+
         return self.lm(topic=topic, search_results=search_results)
 
 
@@ -147,8 +157,6 @@ class RewriteAgentSignature(Signature):
     It should try to keep the most important information and rewrite for conciseness, and NOT to just summarize.
 
     The rewrite result should include the URLs in the text as markdown links, as references for the information provided.
-
-    The rewritten results should be as informative as possible, and should include tables and/or list for readability as much as possible at the end.
     """
 
     input_text: Dict[str, str] = dspy.InputField(
@@ -174,10 +182,12 @@ class RewriteAgent(Module):
     def forward(
         self, input_text: Dict[str, str], extracted_info: Dict[str, str]
     ) -> Dict[str, str]:
+        logger.info(f"Running rewrite agent: {input_text[:200]}")
+
         return self.lm(input_text=input_text, extracted_info=extracted_info)
 
 
-class ReportAgentSignature(Signature):
+class FinalReportAgentSignature(Signature):
     """The report agent generates a final report in markdown format based on each paragraph and extracted info.
     It should include the section title and content, rearrange the paragraphs if necessary for readability.
     Do not include backquotes or code blocks in the report, as it should be a readable markdown report.
@@ -207,12 +217,12 @@ class ReportAgentSignature(Signature):
     )
 
 
-class ReportAgent(Module):
+class FinalReportAgent(Module):
     def __init__(self):
         super().__init__()
 
         self.lm = dspy.ChainOfThought(
-            signature=ReportAgentSignature,
+            signature=FinalReportAgentSignature,
         )
 
     def forward(
@@ -221,12 +231,12 @@ class ReportAgent(Module):
         return self.lm(paragraphs=paragraphs, extracted_info=extracted_info)
 
 
-class CompanyResearcher:
+class StartupResearcher:
     def __init__(self):
         self.search_agent = SearchAgent()
         self.info_extract_agent = InfoExtractAgent()
         self.rewrite_agent = RewriteAgent()
-        self.report_agent = ReportAgent()
+        self.report_agent = FinalReportAgent()
 
     def _load_results(self, path: str):
         with open(path, "r") as f:
@@ -236,17 +246,21 @@ class CompanyResearcher:
         with open(path, "w") as f:
             json.dump(search_results, f, indent=4)
 
-    def search(self, search_term: str) -> Dict[str, List]:
-        """Search for the company and return the search results, with topic as the key and the list of results as the value."""
+    def initial_search(self, search_term: str) -> Dict[str, str]:
+        """Search for the company and return the search results,
+        with topic as the key and the list of results as the value."""
 
         pred = self.search_agent(search_term=search_term)
 
-        logging.info(
-            f"researching company name: {pred.company_name} on {pred.company_url}\n===="
-        )
-        logging.info(
-            f"To continue research, additional search terms could be: {pred.search_terms}"
-        )
+        return {
+            "company_name": pred.company_name,
+            "company_url": pred.company_url,
+            "summary": pred.summary,
+            "search_terms": pred.search_terms,
+        }
+
+    def further_search(self, initial_results: Dict[str, str]) -> List[str]:
+        search_terms = initial_results["search_terms"]
 
         company_name = pred.company_name.replace(" ", "_").replace("/", "_")
         cache_path = Path("results") / (company_name + ".search.json")
@@ -254,12 +268,12 @@ class CompanyResearcher:
         results = dict()
 
         if Path(cache_path).exists():
-            logging.info(f"loading existing results from {cache_path}...")
+            logger.info(f"Loading existing results from {cache_path}...")
             results = self._load_results(cache_path)
         else:
             for term in pred.search_terms:
-                logging.info(f"searching for {term}...")
-                result = search(search=term, num_results=5)
+                logger.info(f"searching for {term}...")
+                result = exa_search(search=term, num_results=5)
                 results[term] = result
 
             self._save_results(results, cache_path)
@@ -268,13 +282,29 @@ class CompanyResearcher:
 
     def run(self, search_term: str) -> Dict[str, Any]:
         """Run the company research process and return the final report."""
-        results = self.search(search_term)
+        initial_results = self.initial_search(search_term)
 
+        logger.info(
+            f"Researching company name: {initial_results['company_name']} on {initial_results['company_url']}\n===="
+        )
+        logger.info(f"Summary: {initial_results['summary']}\n====")
+        logger.info(
+            f"To continue research, additional search terms could be: {initial_results['search_terms']}"
+        )
+
+        cont = input(
+            "Do you want to continue with the search? (y/n): "
+        ).strip().lower()
+        if cont != "y" and cont != "yes":
+            logger.info("Exiting the research process...")
+            return {}
+
+        results = self.further_search(initial_results)
         texts = dict()
         tags = set()
         extracted_info = dict()
 
-        logging.info(f"Search results: {results}")
+        logger.info(f"Search results: {results}")
 
         # extract information from each topic
         for topic, search_results in results.items():
@@ -285,19 +315,20 @@ class CompanyResearcher:
             tags.update(extract_results.tags)
             extracted_info[topic] = extract_results.info
 
-        logging.info("Search results: " + json.dumps(texts, indent=2))
-        logging.info("Extracted info: " + json.dumps(extracted_info, indent=2))
-        logging.info(f"Tags: {tags}")
+        logger.info("Search results: " + json.dumps(texts, indent=2))
+        logger.info("Extracted info: " + json.dumps(extracted_info, indent=2))
+        logger.info(f"Tags: {tags}")
 
         # clean up and rewrite the paragraphs
         rewritten_results = []
         for topic, text in texts.items():
-            logging.info(f"Topic: {topic}\nReport: {text}\n")
+            logger.info(f"Topic: {topic}\nReport: {text}\n")
 
             rewrite_agent = RewriteAgent()
             rewritten_results.append(
                 rewrite_agent(
-                    input_text=text, extracted_info=extracted_info[topic],
+                    input_text=text,
+                    extracted_info=extracted_info[topic],
                 ).rewritten_results
             )
 
@@ -313,31 +344,3 @@ class CompanyResearcher:
             "tags": list(tags),
             "info": extracted_info,
         }
-
-
-def main():
-    researcher = CompanyResearcher()
-
-    search_term = "sandboxaq"
-    results = researcher.run(search_term)
-
-    print(f"Reports: {results['reports']}")
-    for paragraph in results["summaries"]:
-        print(f"Summary: {paragraph}")
-
-    print(f"Tags: {results['tags']}")
-    print(f"Info: {results['info']}")
-
-    with (Path("results") / (search_term + "-summaries.md")).open("w") as f:
-        for paragraph in results["summaries"]:
-            f.write(paragraph)
-            f.write("\n\n")
-
-    with (Path("results") / (search_term + "-final_report.json")).open("w") as f:
-        json.dump(results, f, indent=4)
-
-    with (Path("results") / (search_term + "-final_report.md")).open("w") as f:
-        f.write(results["reports"])
-
-
-main()
