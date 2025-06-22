@@ -39,7 +39,11 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-lm = dspy.LM(model="gemini/gemini-2.0-flash", api_key=os.getenv("GOOGLE_API_KEY"))
+lm = dspy.LM(
+    model="gemini/gemini-2.0-flash",
+    api_key=os.getenv("GOOGLE_API_KEY"),
+    max_tokens=8192,
+)
 
 
 dspy.configure(lm=lm, track_usage=False)
@@ -66,14 +70,16 @@ def exa_search(search, num_results: int = 5) -> List[str]:
 
 
 class SearchAgentSignature(Signature):
-    """The search agent queries the search term and returns the search terms for the search engine, including:
+    """The search agent queries the search term and returns the search terms for the search engine,
+    It should at least return the following search terms:
 
     - Funding
     - Leadership
     - Product or Service Details
     - Customers
     - Latest News
-    - Other information if available
+
+    For now limit the search to 7 search terms.
     """
 
     search_term: str = dspy.InputField(
@@ -118,6 +124,18 @@ class InfoExtractAgentSignature(Signature):
 
     It's critical that each paragraph should include the URL as a markdown link, and the text should be in markdown format, so that each
     statement can be referenced back to the original source URL fullpath.
+
+    The agent should look for the following information in the text:
+    - Founded Year
+    - Field
+    - HQ
+    - CEO and leadership
+    - Key Products
+    - Customers
+    - Fund Raised
+    - Fund Round
+    - Investors
+    - Valuation
     """
 
     topic: str = dspy.InputField(
@@ -185,6 +203,45 @@ class RewriteAgent(Module):
         logger.info(f"Running rewrite agent: {input_text[:200]}")
 
         return self.lm(input_text=input_text, extracted_info=extracted_info)
+
+
+class TableFormatterAgentSignature(Signature):
+    """The table formatter agent formats the extracted information into a markdown table format.
+    It should generate a table with the following columns:
+    - Field: the field of the information, e.g., Founded Year, Field, HQ, CEO and leadership, Key Products, Customers, Fund Raised, Fund Round, Investors, Valuation
+    - Value: the value of the information
+    """
+
+    extracted_info: Dict[str, Any] = dspy.InputField(
+        desc=(
+            """The detailed information about the company, including information like:
+            - Leadership,
+            - Founded Year,
+            - Investors,
+            - Funding,
+            - Products,
+            Be concise with any other information.
+            """
+        )
+    )
+
+    formatted_table: str = dspy.OutputField(
+        desc="The formatted table in markdown format"
+    )
+
+
+class TableFormatterAgent(Module):
+    def __init__(self):
+        super().__init__()
+
+        self.lm = dspy.ChainOfThought(
+            signature=TableFormatterAgentSignature,
+        )
+
+    def forward(self, extracted_info: Dict[str, Any]) -> str:
+        logger.info(f"Running table formatter agent with info: {extracted_info}")
+
+        return self.lm(extracted_info=extracted_info)
 
 
 class FinalReportAgentSignature(Signature):
@@ -259,10 +316,10 @@ class StartupResearcher:
             "search_terms": pred.search_terms,
         }
 
-    def further_search(self, initial_results: Dict[str, str]) -> List[str]:
-        search_terms = initial_results["search_terms"]
-
-        company_name = pred.company_name.replace(" ", "_").replace("/", "_")
+    def further_search(self, initial_results: Dict[str, str]) -> Dict[str, Any]:
+        company_name = (
+            initial_results["company_name"].replace(" ", "_").replace("/", "_")
+        )
         cache_path = Path("results") / (company_name + ".search.json")
 
         results = dict()
@@ -271,7 +328,7 @@ class StartupResearcher:
             logger.info(f"Loading existing results from {cache_path}...")
             results = self._load_results(cache_path)
         else:
-            for term in pred.search_terms:
+            for term in initial_results["search_terms"]:
                 logger.info(f"searching for {term}...")
                 result = exa_search(search=term, num_results=5)
                 results[term] = result
@@ -279,6 +336,19 @@ class StartupResearcher:
             self._save_results(results, cache_path)
 
         return results
+
+    def _format_references(self, search_results: Dict[str, Any]) -> str:
+        """Format the search results into a readable report."""
+        references = ""
+        for topic, results in search_results.items():
+            references += f"## {topic}\n\n"
+            for result in results:
+                references += (
+                    f"- {result['title']}: {result['url']}\n"
+                )
+            references += "\n"
+
+        return references
 
     def run(self, search_term: str) -> Dict[str, Any]:
         """Run the company research process and return the final report."""
@@ -294,15 +364,17 @@ class StartupResearcher:
 
         # confirm with the user to deep dive on the search
         try:
-            cont = input(
-                "Do you want to continue with the search? (y/n): "
-            ).strip().lower()
+            cont = (
+                input("Do you want to continue with the search? (y/n): ")
+                .strip()
+                .lower()
+            )
             if cont != "y" and cont != "yes":
                 logger.info("Exiting the research process...")
                 return {}
         except (EOFError, KeyboardInterrupt):
             logger.info("Exiting the research process...")
-            return {}
+            os._exit(1)
 
         # deep dive
         results = self.further_search(initial_results)
@@ -338,14 +410,29 @@ class StartupResearcher:
                 ).rewritten_results
             )
 
-        # generate the final report
+        # generate a markdown table for the extracted information
+        table_formatter = TableFormatterAgent()
+        # flatten the extracted_info to a single dictionary
+        flat_extracted_info = {k: v for d in extracted_info.values() for k, v in d.items()}
+
+        table = table_formatter(extracted_info=flat_extracted_info)
+
+        # generate the final report text
         report = self.report_agent(
             paragraphs=rewritten_results,
             extracted_info=extracted_info,
         )
 
+        report_text = (
+            report.report
+            + "\n\nInformation Table\n\n"
+            + table.formatted_table
+            + "\n\n# References\n\n"
+            + self._format_references(results)
+        )
+
         return {
-            "reports": report.report,
+            "reports": report_text,
             "summaries": rewritten_results,
             "tags": list(tags),
             "info": extracted_info,
