@@ -19,15 +19,20 @@ def main():
     print(f"Tags: {results['tags']}")
     print(f"Info: {results['info']}")
 
-    with (Path("results") / (search_term + "-summaries.md")).open("w") as f:
+    # Set results directory the same as the script directory
+    results_dir = Path(__file__).parent / "results"
+
+    print("Writing results to results directory: {results_dir}...")
+
+    with (results_dir / (search_term + "-summaries.md")).open("w") as f:
         for paragraph in results["summaries"]:
             f.write(paragraph)
             f.write("\n\n")
 
-    with (Path("results") / (search_term + "-final_report.json")).open("w") as f:
+    with (results_dir / (search_term + "-final_report.json")).open("w") as f:
         json.dump(results, f, indent=4)
 
-    with (Path("results") / (search_term + "-final_report.md")).open("w") as f:
+    with (results_dir / (search_term + "-final_report.md")).open("w") as f:
         f.write(results["reports"])
 
 
