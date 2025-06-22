@@ -2,16 +2,13 @@
 The company research agent is designed specifically for gathering
 a company's information.
 
-It breaks the process into the following agents:
+A list of agents are used to perform the research:
 
-- Research and info gathering:
-  - Exa: search and crawl API
-- Data mining: summarize each piece of research results and data extraction,
-  clean up and summarize the raw data
-- Analysis:
-  - Analyze and provide insight on each aspect of the company
-  - Generate tags and categorization of the company
-- Summary: summarize and generate the final report
+- SearchAgent: uses Exa for search and crawl API
+- InfoExtractAgent: extracts information from the search results
+- RewriteAgent: rewrites the extracted information into a readable format
+- TableFormatterAgent: formats the extracted information into a markdown table
+- FinalReportAgent: generates a final report in markdown format based on the rewritten results and extracted
 """
 
 from typing import List, Dict, Any, Optional
@@ -40,9 +37,10 @@ load_dotenv()
 
 
 lm = dspy.LM(
-    model="gemini/gemini-2.0-flash",
-    api_key=os.getenv("GOOGLE_API_KEY"),
-    max_tokens=8192,
+    api_base=os.getenv("LM_BASE_URL", None),
+    model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.5-flash"),
+    api_key=os.getenv("LM_API_KEY"),
+    max_tokens=16384,
 )
 
 
@@ -70,8 +68,10 @@ def exa_search(search, num_results: int = 5) -> List[str]:
 
 
 class SearchAgentSignature(Signature):
-    """The search agent queries the search term and returns the search terms for the search engine,
-    It should at least return the following search terms:
+    """The search agent queries the search term and returns the search terms for the search engine.
+    It should lookup a quick overview of the company, and decides what search terms to use for further research.
+
+    Further research should at least return the following search terms:
 
     - Funding
     - Leadership
@@ -289,11 +289,12 @@ class FinalReportAgent(Module):
 
 
 class StartupResearcher:
-    def __init__(self):
+    def __init__(self, results_dir=None):
         self.search_agent = SearchAgent()
         self.info_extract_agent = InfoExtractAgent()
         self.rewrite_agent = RewriteAgent()
         self.report_agent = FinalReportAgent()
+        self.results_dir = results_dir or Path(__file__).parent / "results"
 
     def _load_results(self, path: str):
         with open(path, "r") as f:
@@ -320,7 +321,7 @@ class StartupResearcher:
         company_name = (
             initial_results["company_name"].replace(" ", "_").replace("/", "_")
         )
-        cache_path = Path("results") / (company_name + ".search.json")
+        cache_path = self.results_dir / (company_name + ".search.json")
 
         results = dict()
 
@@ -340,12 +341,13 @@ class StartupResearcher:
     def _format_references(self, search_results: Dict[str, Any]) -> str:
         """Format the search results into a readable report."""
         references = ""
+        if not search_results:
+            return ""
+
         for topic, results in search_results.items():
             references += f"## {topic}\n\n"
             for result in results:
-                references += (
-                    f"- {result['title']}: {result['url']}\n"
-                )
+                references += f"- {result['title']}: {result['url']}\n"
             references += "\n"
 
         return references
@@ -413,7 +415,9 @@ class StartupResearcher:
         # generate a markdown table for the extracted information
         table_formatter = TableFormatterAgent()
         # flatten the extracted_info to a single dictionary
-        flat_extracted_info = {k: v for d in extracted_info.values() for k, v in d.items()}
+        flat_extracted_info = {
+            k: v for d in extracted_info.values() for k, v in d.items() if d is not None
+        }
 
         table = table_formatter(extracted_info=flat_extracted_info)
 

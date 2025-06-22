@@ -9,7 +9,12 @@ from startup.research_agent import StartupResearcher
 def main():
     search_term = input("Enter the company name or search term: ").strip()
 
-    researcher = StartupResearcher()
+    # Set results directory the same as the script directory
+    results_dir = Path(__file__).parent / "results"
+    if not results_dir.exists():
+        results_dir.mkdir(parents=True)
+
+    researcher = StartupResearcher(results_dir=results_dir)
     results = researcher.run(search_term)
 
     print(f"Reports: {results['reports']}")
@@ -19,10 +24,7 @@ def main():
     print(f"Tags: {results['tags']}")
     print(f"Info: {results['info']}")
 
-    # Set results directory the same as the script directory
-    results_dir = Path(__file__).parent / "results"
-
-    print("Writing results to results directory: {results_dir}...")
+    print(f"Writing results to results directory: {results_dir}...")
 
     with (results_dir / (search_term + "-summaries.md")).open("w") as f:
         for paragraph in results["summaries"]:
