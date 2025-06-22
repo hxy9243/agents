@@ -6,7 +6,8 @@ authors = ["Kevin Hu <hxy9243@gmail.com>"]
 readme = "README.md"
 
 packages = [
-    { include = "therapist", from = "." }
+    { include = "therapist", from = "." },
+    { include = "startup", from = "." }
 ]
 
 [tool.poetry.dependencies]
@@ -22,7 +23,8 @@ exa = "^0.5.26"
 exa-py = "^1.14.6"
 
 [tool.poetry.scripts]
-therapist = "therapist.chat:main"
+therapist = "therapist.main:main"
+startup_researcher = "startup.main:main"
 
 [build-system]
 requires = ["poetry-core"]
