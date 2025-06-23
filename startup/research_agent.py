@@ -68,7 +68,9 @@ def exa_search(search, num_results: int = 5) -> List[str]:
 
 class SearchAgentSignature(Signature):
     """The search agent queries the search term and returns the search terms for the search engine.
-    It should lookup a quick overview of the company, and decides what search terms to use for further research.
+    It should lookup a quick overview of the company with 1 num_results and get a quick summary.
+
+    It should decide what search terms to use for further research (instead of actually calling the search).
 
     Further research should at least return the following search terms:
 
