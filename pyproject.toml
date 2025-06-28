@@ -12,7 +12,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-dspy = "3.0.0b1"
+dspy = {extras = ["mcp"], version = "^2.6.27"}
 dotenv = "^0.9.9"
 chromadb = "^0.6.3"
 sqlalchemy = "^2.0.40"
@@ -21,6 +21,7 @@ beautifulsoup4 = "^4.13.4"
 openai = "=1.61.0"
 exa = "^0.5.26"
 exa-py = "^1.14.6"
+mcp = {extras = ["cli"], version = "^1.10.1"}
 
 [tool.poetry.scripts]
 therapist = "therapist.main:main"
