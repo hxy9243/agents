@@ -72,6 +72,13 @@ class Library:
         self._next_member_id += 1
         return member
 
+    def search_member(self, name: str) -> Member:
+        for member in self.members:
+            if name.lower() in member.name.lower():
+                return member
+
+        raise MemberNotFound
+
     def borrow_book(self, book_id: str, member_id: int) -> Loan:
         if member_id not in self.members:
             raise MemberNotFound(f"Member with id {member_id} not found.")
@@ -115,6 +122,9 @@ class Library:
         return loan
 
     def search_books(self, query: str) -> List[Book]:
+        if query == "":
+            return [book for book in self.books.values()]
+
         return [
             book for book in self.books.values()
             if query.lower() in book.title.lower() or query.lower() in book.author.lower()

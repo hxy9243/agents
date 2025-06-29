@@ -4,6 +4,7 @@ import os
 import asyncio
 
 import dspy
+from contextlib import AsyncExitStack
 
 
 from mcp import ClientSession, StdioServerParameters
@@ -37,6 +38,10 @@ class LibrarianSignature(dspy.Signature):
     """You are a librarian. You are given a list of tools to handle user requests.
     You should decide the right tool to use in order to fulfill users' requests.
 
+    You can lookup users's information by searching members.
+
+    You can use search book function to find books.
+
     If users' request doesn't pertain to library or books, simply decline politely.
     """
 
@@ -52,48 +57,71 @@ class LibrarianAgent(dspy.Module):
     def __init__(self, mcp_address: str):
         super().__init__()
         self.mcp_address = mcp_address
-        self.lm = None # Initialize lm to None, will be set in ainit
+        self.lm = None  # Initialize lm to None, will be set in ainit
+
+        self.session: Optional[ClientSession] = None
+        self.exit_stack = AsyncExitStack()
+
+    async def aclose(self):
+        await self.exit_stack.aclose()
 
     async def ainit(self):
         """Asynchronous initialization method to connect to MCP and set up the LM."""
         tools = await self.connect_mcp(self.mcp_address)
+
         self.lm = dspy.ReAct(
             signature=LibrarianSignature,
             tools=tools,
         )
-        return self # Return self to allow chaining in the factory method
+        return self
 
     async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
-        async with streamablehttp_client(mcp_address) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                # Initialize the connection
-                await session.initialize()
-                # List available tools
-                tools = await session.list_tools()
+        read, write, _ = await self.exit_stack.enter_async_context(
+            streamablehttp_client(mcp_address),
+        )
+        session = await self.exit_stack.enter_async_context(ClientSession(read, write))
 
-                # Convert MCP tools to DSPy tools
-                dspy_tools = []
-                for tool in tools.tools:
-                    dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
+        await session.initialize()
 
-                print(len(dspy_tools))
-                for tool in dspy_tools:
-                    print(tool.name)
-                    print(tool.args)
+        # Initialize the connection
+        await session.initialize()
+        # List available tools
+        tools = await session.list_tools()
 
-                return dspy_tools
+        # Convert MCP tools to DSPy tools
+        dspy_tools = []
+        for tool in tools.tools:
+            dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
+
+        return dspy_tools
 
     async def aforward(self, request: str):
         if self.lm is None:
-            raise RuntimeError("LibrarianAgent not initialized. Call await agent.ainit() first.")
-        return self.lm(user_request=request) # Changed to explicitly pass as keyword argument
+            raise RuntimeError(
+                "LibrarianAgent not initialized. Call await agent.ainit() first."
+            )
+        tools = await self.connect_mcp(self.mcp_address)
+        try:
+            self.lm = dspy.ReAct(
+                signature=LibrarianSignature,
+                tools=tools,
+            )
+
+            return await self.lm.acall(user_request=request)
+        finally:
+            print("called function")
 
 
 if __name__ == "__main__":
-    async def main():
-        agent = LibrarianAgent("http://localhost:5400/mcp")
-        await agent.ainit() # Call the asynchronous initialization
-        response = await agent.aforward("hello, what books do you have?")
-        print(response)
 
-    asyncio.run(main())
+    async def main():
+        try:
+            agent = LibrarianAgent("http://localhost:5400/mcp")
+            await agent.ainit()  # Call the asynchronous initialization
+            response = await agent.aforward("hello, I'm bob. May I borrow the lord of the rings?")
+            print(response)
+        finally:
+            await agent.aclose()
+
+
+asyncio.run(main())

@@ -2,7 +2,7 @@ from typing import List
 from mcp.server.fastmcp import FastMCP
 from librarian.library import Library, Book, Loan, Member
 
-mcp = FastMCP("LibraryManagement", port=5400, path='/mcp')
+mcp = FastMCP("LibraryManagement", port=5400, path="/mcp")
 library = Library()
 
 # Populate with some data
@@ -30,6 +30,7 @@ library.add_book("978-0307277671", "The Kite Runner", "Khaled Hosseini", 3)
 library.add_book("978-1400033423", "The Secret History", "Donna Tartt", 2)
 library.add_book("978-0307387899", "Gone Girl", "Gillian Flynn", 4)
 library.add_book("978-0553380033", "A Brief History of Time", "Stephen Hawking", 2)
+
 library.add_member("Alice", "alice@example.com")
 library.add_member("Bob", "bob@example.com")
 library.add_member("Charlie", "charlie@example.com")
@@ -60,6 +61,12 @@ def return_book(copy_id: int) -> Loan:
 def search(query: str) -> List[Book]:
     """Searches for books by title or author."""
     return library.search_books(query)
+
+
+@mcp.tool()
+def search_member(member: str) -> List[Member]:
+    """Gets members of the library."""
+    return list(library.members.values())
 
 
 @mcp.resource("books://")
