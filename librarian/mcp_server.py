@@ -1,5 +1,6 @@
 from typing import List
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.settings import AuthSettings
 from librarian.library import Library, Book, Loan, Member
 
 mcp = FastMCP("LibraryManagement", port=5400, path="/mcp")

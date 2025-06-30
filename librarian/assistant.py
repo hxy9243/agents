@@ -2,27 +2,12 @@ from typing import List, Dict
 
 import os
 import asyncio
-
-import dspy
 from contextlib import AsyncExitStack
 
-
+import dspy
 from mcp import ClientSession, StdioServerParameters
-
-# from mcp.client.
-# from mcp.client.streamable_http import streamablehttp_client
 from mcp.client.streamable_http import streamablehttp_client
 
-# from mcp.client.stdio import stdio_client
-
-# # Create server parameters for stdio connection
-# server_params = StdioServerParameters(
-#     command="python",  # Executable
-#     args=["path_to_your_working_directory/mcp_server.py"],
-#     env=None,
-# )
-
-# dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
 
 lm = dspy.LM(
     model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.0-flash"),
@@ -76,19 +61,15 @@ class LibrarianAgent(dspy.Module):
         return self
 
     async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
+        # Initialize the connection
         read, write, _ = await self.exit_stack.enter_async_context(
             streamablehttp_client(mcp_address),
         )
         session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-
         await session.initialize()
-
-        # Initialize the connection
-        await session.initialize()
-        # List available tools
-        tools = await session.list_tools()
 
         # Convert MCP tools to DSPy tools
+        tools = await session.list_tools()
         dspy_tools = []
         for tool in tools.tools:
             dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
@@ -108,8 +89,8 @@ class LibrarianAgent(dspy.Module):
             )
 
             return await self.lm.acall(user_request=request)
-        finally:
-            print("called function")
+        except Exception as e:
+            print(f"Error calling LM agent: {e}")
 
 
 if __name__ == "__main__":
@@ -118,7 +99,9 @@ if __name__ == "__main__":
         try:
             agent = LibrarianAgent("http://localhost:5400/mcp")
             await agent.ainit()  # Call the asynchronous initialization
-            response = await agent.aforward("hello, I'm bob. May I borrow the lord of the rings?")
+            response = await agent.acall(
+                "hello, I'm bob. May I borrow the lord of the rings?"
+            )
             print(response)
         finally:
             await agent.aclose()
