@@ -427,7 +427,7 @@ class StartupResearcher:
         table_formatter = TableFormatterAgent()
         # flatten the extracted_info to a single dictionary
         flat_extracted_info = {
-            k: v for k, v in d.items() for d in extracted_info.values() if d is not None
+            k: v  for d in extracted_info.values()  for k, v in d.items() if d is not None
         }
 
         key_info = table_formatter(extracted_info=flat_extracted_info)
