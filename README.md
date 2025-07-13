@@ -23,10 +23,15 @@ And fill in the environment with your model name and your personal key in local 
 LM_BASE_URL=
 LM_API_KEY=
 LM_MODEL_NAME=
+
 EMBED_MODEL_NAME=
+DATABASE_DIR=
+
+# for exa search API
+EXA_API_KEY=
 ```
 
-# run the actual scripts, for example
+Run example agents in the command line with:
 
 ```bash
 uv run therapist
@@ -37,6 +42,16 @@ uv run startup_researcher
 # Agent List
 
 ## **[Therapist](/therapist/)**
+
+Setup the following env var:
+
+```
+LM_BASE_URL=
+LM_API_KEY=
+LM_MODEL_NAME=
+EMBED_MODEL_NAME=
+DATABASE_DIR=
+```
 
 Run a conversational therapist with:
 
@@ -67,13 +82,23 @@ Example:
 
 ## **[Startup Researcher](/startup/)**
 
-```bash
-uv run startup_researcher
-```
-
 A toy researcher example implemented by DSPy and Exa search. It'll query the search API with the
 startup name you input, asks for confirmation, and generate a markdown output.
 
+For this agent, you'll need the [exa](https://exa.ai/) API key setup in the env var:
+
+```
+LM_BASE_URL=
+LM_API_KEY=
+LM_MODEL_NAME=
+EXA_API_KEY=
+```
+
+Run it with:
+
+```bash
+uv run startup_researcher
+```
 Example:
 
 ```
