@@ -427,9 +427,12 @@ class StartupResearcher:
         # generate a markdown table for the extracted information
         table_formatter = TableFormatterAgent()
         # flatten the extracted_info to a single dictionary
-        flat_extracted_info = {
-            k: v  for d in extracted_info.values()  for k, v in d.items() if d is not None
-        }
+        flat_extracted_info = {}
+        for d in extracted_info.values():
+            if d is None:
+                continue
+            for k, v in d.items():
+                flat_extracted_info[k] = v
 
         key_info = table_formatter(extracted_info=flat_extracted_info)
         key_info = key_info.formatted_dict
