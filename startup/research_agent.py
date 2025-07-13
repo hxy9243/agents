@@ -38,6 +38,7 @@ load_dotenv()
 
 lm = dspy.LM(
     model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.0-flash"),
+    api_base=os.getenv("LM_BASE_URL", None),
     api_key=os.getenv("LM_API_KEY"),
     max_tokens=16384,
 )

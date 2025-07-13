@@ -14,7 +14,7 @@ from pathlib import Path
 import dspy
 import chromadb
 from chromadb.config import Settings
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from litellm import embedding
 
 from therapist.models import init_session, Message, Conversation
 
@@ -75,12 +75,12 @@ class Memory:
         self._session = init_session(path)
 
     def _init_embed_retriever(self, path: str | Path):
-        self.embedding = OpenAIEmbeddingFunction(
-            api_base=os.getenv("LM_BASE_URL"),
+        self.embedding = lambda input: embedding(
+            input=input,
+            api_base=os.getenv("LM_BASE_URL", None),
             api_key=os.getenv("LM_API_KEY"),
-            model_name=os.getenv("EMBED_MODEL_NAME"),
-        )
-
+            model=os.getenv("EMBED_MODEL_NAME"),
+        )['data'][0]['embedding']
         client = chromadb.Client(
             Settings(
                 persist_directory=str(path),

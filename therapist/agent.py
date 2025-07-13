@@ -45,9 +45,10 @@ class ChatBot:
         )
 
         lm = dspy.LM(
-            api_base=os.getenv("LM_BASE_URL"),
             api_key=os.getenv("LM_API_KEY"),
             model=os.getenv("LM_MODEL_NAME"),
+            api_base=os.getenv("LM_BASE_URL", None),
+            max_tokens=16384,
         )
         dspy.configure(lm=lm, track_usage=True)
 
