@@ -7,10 +7,12 @@ from contextlib import AsyncExitStack
 import dspy
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.sse import sse_client
 
 
 lm = dspy.LM(
-    model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.0-flash"),
+    model=os.getenv("LM_MODEL_NAME", "gemini/gemini-2.5-flash"),
+    api_base=os.getenv("LM_BASE_URL", None),
     api_key=os.getenv("LM_API_KEY"),
     max_tokens=16384,
 )
@@ -26,6 +28,8 @@ class LibrarianSignature(dspy.Signature):
     You can lookup users's information by searching members.
 
     You can use search book function to find books.
+
+    When user is borrowing books, you should return the book info and copy id.
 
     If users' request doesn't pertain to library or books, simply decline politely.
     """
@@ -62,8 +66,8 @@ class LibrarianAgent(dspy.Module):
 
     async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
         # Initialize the connection
-        read, write, _ = await self.exit_stack.enter_async_context(
-            streamablehttp_client(mcp_address),
+        read, write = await self.exit_stack.enter_async_context(
+            sse_client(mcp_address, headers={'authorization': 'bearer 12345'}),
         )
         session = await self.exit_stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
@@ -97,10 +101,10 @@ if __name__ == "__main__":
 
     async def main():
         try:
-            agent = LibrarianAgent("http://localhost:5400/mcp")
+            agent = LibrarianAgent("http://localhost:5400/sse")
             await agent.ainit()  # Call the asynchronous initialization
             response = await agent.acall(
-                "hello, I'm bob. May I borrow the lord of the rings?"
+                "hello, I'm bob. What books do you have?",
             )
             print(response)
         finally:
