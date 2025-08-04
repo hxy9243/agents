@@ -50,19 +50,43 @@ class LibrarianAgent(dspy.Module):
 
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
+        # self.exit_stack = None
 
     async def aclose(self):
         await self.exit_stack.aclose()
 
     async def ainit(self):
         """Asynchronous initialization method to connect to MCP and set up the LM."""
-        tools = await self.connect_mcp(self.mcp_address)
+        # tools = await self.connect_mcp(self.mcp_address)
+        tools = await self.connect_sse_mcp(self.mcp_address)
 
         self.lm = dspy.ReAct(
             signature=LibrarianSignature,
             tools=tools,
         )
         return self
+
+    async def connect_sse_mcp(self, mcp_address: str) -> List[dspy.Tool]:
+        self._stream_context = sse_client(mcp_address, headers={'authorization': 'bearer 12345'})
+        streams = await self._stream_context.__aenter__()
+
+        self._session = ClientSession(*streams)
+        self.session = await self._session.__aenter__()
+
+        await self.session.initialize()
+        tools = await self.session.list_tools()
+        dspy_tools = []
+        for tool in tools.tools:
+            dspy_tools.append(dspy.Tool.from_mcp_tool(self.session, tool))
+
+        return dspy_tools
+
+    async def sse_disconnect(self):
+        if self._session:
+            await self._session.__aexit__(None, None, None)
+
+        if self._stream_context:
+            await self._stream_context.__aexit__(None, None, None)
 
     async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
         # Initialize the connection
@@ -80,12 +104,20 @@ class LibrarianAgent(dspy.Module):
 
         return dspy_tools
 
+    async def call(self):
+        return await self._session.call_tool("add_book", {
+            "book_id": "1",
+            "title": "hello",
+            "author": "will",
+            "num_copies": 2,
+        })
+
     async def aforward(self, request: str):
-        if self.lm is None:
-            raise RuntimeError(
-                "LibrarianAgent not initialized. Call await agent.ainit() first."
-            )
-        tools = await self.connect_mcp(self.mcp_address)
+        # if self.lm is None:
+        #     raise RuntimeError(
+        #         "LibrarianAgent not initialized. Call await agent.ainit() first."
+        #     )
+        tools = await self.connect_sse_mcp(self.mcp_address)
         try:
             self.lm = dspy.ReAct(
                 signature=LibrarianSignature,
@@ -103,12 +135,18 @@ if __name__ == "__main__":
         try:
             agent = LibrarianAgent("http://localhost:5400/sse")
             await agent.ainit()  # Call the asynchronous initialization
-            response = await agent.acall(
-                "hello, I'm bob. What books do you have?",
-            )
-            print(response)
-        finally:
-            await agent.aclose()
 
+            response = await agent.call()
+            print(response)
+
+            # response = await agent.acall(
+            #     "Hello. What books do you have? Do you have the hitchhiker book, and the lord of the rings?",
+            # )
+            # print(response)
+            # print(agent.inspect_history())
+            # print(response.process_result)
+        finally:
+            # await agent.aclose()
+            await agent.sse_disconnect()
 
 asyncio.run(main())

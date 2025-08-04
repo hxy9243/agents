@@ -1,4 +1,6 @@
 from typing import List
+import time
+
 
 from pydantic import BaseModel, Field
 
@@ -53,16 +55,29 @@ library.add_member("Diana", "diana@example.com")
 library.add_member("Eve", "eve@example.com")
 
 
+class NaiveTokenVerifier(TokenVerifier):
+    async def verify_token(self, token: str) -> AccessToken:
+        print("Hello world")
+
+        return AccessToken(
+            token=token,
+            client_id="tom",
+            scopes=["read", "write"],
+            expires_at=int(time.time() + 3600 * 24),
+            resource="library",
+        )
+
+
 mcp = FastMCP(
     "LibraryManagement",
     port=5400,
-    path="/mcp",
-    # token_verifier=NaiveTokenVerifier(),
-    # auth=AuthSettings(
-    #     issuer_url="http://example.com",
-    #     required_scopes=["user"],
-    #     resource_server_url="http://localhost",
-    # ),
+    # mount_path="/see",
+    token_verifier=NaiveTokenVerifier(),
+    auth=AuthSettings(
+        issuer_url="http://example.com",
+        required_scopes=["read"],
+        resource_server_url="http://localhost",
+    ),
 )
 
 
@@ -86,15 +101,16 @@ auth_server_config = fetch_server_config_by_well_known_url(
     well_known_url="https://accounts.google.com/.well-known/openid-configuration",
     type=AuthServerType.OAUTH,
 )
-auth = MCPAuth(server=auth_server_config)
-bearer_auth_middleware = auth.bearer_auth_middleware(validate_token)
-
+mcp_auth = MCPAuth(server=auth_server_config)
+bearer_auth_middleware = mcp_auth.bearer_auth_middleware(validate_token)
 
 
 @mcp.tool()
-async def add_book(book_id: str, title: str, author: str, num_copies: int = 1):
+async def add_book(ctx: Context, book_id: str, title: str, author: str, num_copies: int = 1):
     """Adds a new book and its copies to the library."""
+
     print(f"Getting request to call add_book from client {ctx.client_id}, ctx: {ctx}")
+    breakpoint()
 
     library.add_book(book_id, title, author, num_copies)
     return {"message": f"Added {num_copies} copies of '{title}'."}
@@ -130,9 +146,9 @@ async def search(query: str) -> List[Book]:
     """Searches for books by title or author."""
     print(f"Getting request to call search from client ")
 
-    print("claims", auth.auth_info)
+    print("claims", mcp_auth.auth_info)
 
-    print("claims", auth.auth_info.claims)
+    print("claims", mcp_auth.auth_info.claims)
 
     return library.search_books(query)
 
@@ -167,7 +183,6 @@ async def get_member_loans(member_id: int) -> List[Loan]:
     return library.get_member_loans(member_id)
 
 
-
 # mcp.run(transport="streamable-http")
 def create_app():
     from mcpauth.config import (
@@ -198,11 +213,11 @@ def create_app():
 
     app = Starlette(
         routes=[
-            auth.metadata_route(),
+            mcp_auth.metadata_route(),
             Mount(
                 "/",
                 app=mcp.sse_app(),
-                middleware=[Middleware(bearer_auth_middleware)],
+                # middleware=[Middleware(bearer_auth_middleware)],
             ),
         ],
     )
