@@ -134,3 +134,36 @@ class Library:
         if member_id not in self.members:
             raise MemberNotFound(f"Member with id {member_id} not found.")
         return [loan for loan in self.loans.values() if loan.member_id == member_id]
+
+
+def add_example_data(library: Library):
+    library.add_book(
+        "978-0345391803", "The Hitchhiker's Guide to the Galaxy", "Douglas Adams", 3
+    )
+    library.add_book("978-0618640157", "The Lord of the Rings", "J.R.R. Tolkien", 2)
+    library.add_book("978-0743273565", "The Da Vinci Code", "Dan Brown", 5)
+    library.add_book("978-0439023528", "The Hunger Games", "Suzanne Collins", 4)
+    library.add_book("978-0385537858", "The Martian", "Andy Weir", 3)
+    library.add_book("978-1451673319", "Fahrenheit 451", "Ray Bradbury", 2)
+    library.add_book("978-0743273565", "To Kill a Mockingbird", "Harper Lee", 4)
+    library.add_book("978-0452284234", "1984", "George Orwell", 3)
+    library.add_book("978-0743273565", "The Great Gatsby", "F. Scott Fitzgerald", 2)
+    library.add_book("978-0142437230", "The Catcher in the Rye", "J.D. Salinger", 1)
+    library.add_book(
+        "978-0307474278", "The Girl with the Dragon Tattoo", "Stieg Larsson", 3
+    )
+    library.add_book("978-0316067938", "The Road", "Cormac McCarthy", 2)
+    library.add_book("978-0743273565", "Brave New World", "Aldous Huxley", 2)
+    library.add_book("978-0446310789", "To Kill a Mockingbird", "Harper Lee", 3)
+    library.add_book("978-0679783268", "Pride and Prejudice", "Jane Austen", 4)
+    library.add_book("978-0061120084", "The Alchemist", "Paulo Coelho", 5)
+    library.add_book("978-0307277671", "The Kite Runner", "Khaled Hosseini", 3)
+    library.add_book("978-1400033423", "The Secret History", "Donna Tartt", 2)
+    library.add_book("978-0307387899", "Gone Girl", "Gillian Flynn", 4)
+    library.add_book("978-0553380033", "A Brief History of Time", "Stephen Hawking", 2)
+
+    library.add_member("Alice", "alice@example.com")
+    library.add_member("Bob", "bob@example.com")
+    library.add_member("Charlie", "charlie@example.com")
+    library.add_member("Diana", "diana@example.com")
+    library.add_member("Eve", "eve@example.com")
