@@ -15,7 +15,6 @@ add_example_data(library)
 mcp = FastMCP(
     "LibraryManagement",
     port=5400,
-    sse_path="/sse"
 )
 
 
@@ -39,7 +38,7 @@ async def return_book(copy_id: int) -> Loan:
 
 
 @mcp.tool()
-async def search(query: str) -> List[Book]:
+async def search(query: str) -> list[Book]:
     """Searches for books by title or author."""
     print(f"Getting request to call search from client ")
     return library.search_books(query)
@@ -69,4 +68,4 @@ async def get_member_loans(member_id: int) -> List[Loan]:
     return library.get_member_loans(member_id)
 
 
-mcp.run(transport="sse")
+mcp.run(transport="streamable-http")

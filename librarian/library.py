@@ -121,7 +121,7 @@ class Library:
         loan.return_date = date.today()
         return loan
 
-    def search_books(self, query: str) -> List[Book]:
+    def search_books(self, query: str) -> list[Book]:
         if query == "":
             return [book for book in self.books.values()]
 

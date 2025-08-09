@@ -1,13 +1,12 @@
 from typing import List, Dict, Optional
 
-import os
-import asyncio
 from contextlib import AsyncExitStack
 
+import os
+import asyncio
+
 import dspy
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-from mcp.client.sse import sse_client
+from fastmcp import Client
 
 
 lm = dspy.LM(
@@ -43,73 +42,24 @@ class LibrarianSignature(dspy.Signature):
 
 
 class LibrarianAgent(dspy.Module):
-    def __init__(self, mcp_address: str):
+    def __init__(self, mcp_session: Client):
         super().__init__()
-        self.mcp_address = mcp_address
-        self.lm = None  # Initialize lm to None, will be set in ainit
 
-        self.session: Optional[ClientSession] = None
-        self.exit_stack = AsyncExitStack()
-        # self.exit_stack = None
-
-    async def aclose(self):
-        await self.exit_stack.aclose()
+        self.mcp_session = mcp_session
 
     async def ainit(self):
-        """Asynchronous initialization method to connect to MCP and set up the LM."""
-        # tools = await self.connect_mcp(self.mcp_address)
-        tools = await self.connect_sse_mcp(self.mcp_address)
+        tools = await self.mcp_session.list_tools()
+        dspy_tools = []
+        for tool in tools.tools:
+            dspy_tools.append(dspy.Tool.from_mcp_tool(self.mcp_session, tool))
 
         self.lm = dspy.ReAct(
             signature=LibrarianSignature,
-            tools=tools,
+            tools=dspy_tools,
         )
-        return self
-
-    async def connect_sse_mcp(self, mcp_address: str) -> List[dspy.Tool]:
-        self._stream_context = sse_client(mcp_address)
-        streams = await self._stream_context.__aenter__()
-
-        self._session = ClientSession(*streams)
-        self.session = await self._session.__aenter__()
-
-        await self.session.initialize()
-        tools = await self.session.list_tools()
-        dspy_tools = []
-        for tool in tools.tools:
-            dspy_tools.append(dspy.Tool.from_mcp_tool(self.session, tool))
-
-        return dspy_tools
-
-    async def sse_disconnect(self):
-        if self._session:
-            await self._session.__aexit__(None, None, None)
-
-        if self._stream_context:
-            await self._stream_context.__aexit__(None, None, None)
-
-    # async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
-    #     # Initialize the connection
-    #     read, write, _ = await self.exit_stack.enter_async_context(
-    #         streamablehttp_client(
-    #             mcp_address, headers={"authorization": "bearer 12345"}
-    #         ),
-    #     )
-    #     session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-    #     await session.initialize()
-
-    #     self.session = session
-
-    #     # Convert MCP tools to DSPy tools
-    #     tools = await session.list_tools()
-    #     dspy_tools = []
-    #     for tool in tools.tools:
-    #         dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
-
-    #     return dspy_tools
 
     async def call(self):
-        return await self.session.call_tool(
+        return await self.mcp_session.call_tool(
             "add_book",
             {
                 "book_id": "1",
@@ -120,36 +70,31 @@ class LibrarianAgent(dspy.Module):
         )
 
     async def aforward(self, request: str):
-        tools = await self.connect_sse_mcp(self.mcp_address)
         try:
-            self.lm = dspy.ReAct(
-                signature=LibrarianSignature,
-                tools=tools,
-            )
-
             return await self.lm.acall(user_request=request)
         except Exception as e:
             print(f"Error calling LM agent: {e}")
 
 
+async def main():
+    agent = None
+    try:
+        async with Client("http://localhost:5400/mcp") as client:
+            agent = LibrarianAgent(client.session)
+            await agent.ainit()
+
+            while True:
+                request = input("Library > ")
+                response = await agent.acall(request)
+                print(response.process_result)
+    except Exception as e:
+        print(f"Error calling agent: {e}")
+        if agent:
+            print(agent.inspect_history())
+
+
 if __name__ == "__main__":
-
-    async def main():
-        try:
-            agent = LibrarianAgent("http://localhost:5400/sse")
-            await agent.ainit()  # Call the asynchronous initialization
-
-            response = await agent.call()
-            print(response)
-
-            # response = await agent.acall(
-            #     "Hello. What books do you have? Do you have the hitchhiker book, and the lord of the rings?",
-            # )
-            # print(response)
-            # print(agent.inspect_history())
-            # print(response.process_result)
-        finally:
-            await agent.sse_disconnect()
-
-
-asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nCancelled..")
