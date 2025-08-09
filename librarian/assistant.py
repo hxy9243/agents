@@ -5,7 +5,7 @@ import asyncio
 from contextlib import AsyncExitStack
 
 import dspy
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.client.sse import sse_client
 
@@ -67,7 +67,7 @@ class LibrarianAgent(dspy.Module):
         return self
 
     async def connect_sse_mcp(self, mcp_address: str) -> List[dspy.Tool]:
-        self._stream_context = sse_client(mcp_address, headers={'authorization': 'bearer 12345'})
+        self._stream_context = sse_client(mcp_address)
         streams = await self._stream_context.__aenter__()
 
         self._session = ClientSession(*streams)
@@ -88,35 +88,38 @@ class LibrarianAgent(dspy.Module):
         if self._stream_context:
             await self._stream_context.__aexit__(None, None, None)
 
-    async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
-        # Initialize the connection
-        read, write = await self.exit_stack.enter_async_context(
-            sse_client(mcp_address, headers={'authorization': 'bearer 12345'}),
-        )
-        session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
+    # async def connect_mcp(self, mcp_address: str) -> List[dspy.Tool]:
+    #     # Initialize the connection
+    #     read, write, _ = await self.exit_stack.enter_async_context(
+    #         streamablehttp_client(
+    #             mcp_address, headers={"authorization": "bearer 12345"}
+    #         ),
+    #     )
+    #     session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+    #     await session.initialize()
 
-        # Convert MCP tools to DSPy tools
-        tools = await session.list_tools()
-        dspy_tools = []
-        for tool in tools.tools:
-            dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
+    #     self.session = session
 
-        return dspy_tools
+    #     # Convert MCP tools to DSPy tools
+    #     tools = await session.list_tools()
+    #     dspy_tools = []
+    #     for tool in tools.tools:
+    #         dspy_tools.append(dspy.Tool.from_mcp_tool(session, tool))
+
+    #     return dspy_tools
 
     async def call(self):
-        return await self._session.call_tool("add_book", {
-            "book_id": "1",
-            "title": "hello",
-            "author": "will",
-            "num_copies": 2,
-        })
+        return await self.session.call_tool(
+            "add_book",
+            {
+                "book_id": "1",
+                "title": "hello",
+                "author": "will",
+                "num_copies": 2,
+            },
+        )
 
     async def aforward(self, request: str):
-        # if self.lm is None:
-        #     raise RuntimeError(
-        #         "LibrarianAgent not initialized. Call await agent.ainit() first."
-        #     )
         tools = await self.connect_sse_mcp(self.mcp_address)
         try:
             self.lm = dspy.ReAct(
@@ -146,7 +149,7 @@ if __name__ == "__main__":
             # print(agent.inspect_history())
             # print(response.process_result)
         finally:
-            # await agent.aclose()
             await agent.sse_disconnect()
+
 
 asyncio.run(main())

@@ -15,6 +15,7 @@ add_example_data(library)
 mcp = FastMCP(
     "LibraryManagement",
     port=5400,
+    sse_path="/sse"
 )
 
 
@@ -68,4 +69,4 @@ async def get_member_loans(member_id: int) -> List[Loan]:
     return library.get_member_loans(member_id)
 
 
-mcp.run(transport="streamable-http")
+mcp.run(transport="sse")
