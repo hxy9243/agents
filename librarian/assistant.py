@@ -1,12 +1,12 @@
 from typing import List, Dict, Optional
 
-from contextlib import AsyncExitStack
-
 import os
 import asyncio
 
 import dspy
 from fastmcp import Client
+from mcp import ClientSession
+from fastmcp.client.transports import StreamableHttpTransport
 
 
 lm = dspy.LM(
@@ -24,7 +24,7 @@ class LibrarianSignature(dspy.Signature):
     """You are a librarian. You are given a list of tools to handle user requests.
     You should decide the right tool to use in order to fulfill users' requests.
 
-    You can lookup users's information by searching members.
+    You can lookup users's information by calling .
 
     You can use search book function to find books.
 
@@ -33,7 +33,8 @@ class LibrarianSignature(dspy.Signature):
     If users' request doesn't pertain to library or books, simply decline politely.
     """
 
-    user_request: str = dspy.InputField()
+    history: dspy.History = dspy.InputField(desc="conversation history")
+    user_request: str = dspy.InputField(desc="user input request")
     process_result: str = dspy.OutputField(
         desc=(
             "Message that summarizes the process result, and the information users need"
@@ -42,14 +43,16 @@ class LibrarianSignature(dspy.Signature):
 
 
 class LibrarianAgent(dspy.Module):
-    def __init__(self, mcp_session: Client):
+    def __init__(self, mcp_session: ClientSession):
         super().__init__()
 
         self.mcp_session = mcp_session
+        self.conversations = dspy.History(messages=[])
 
     async def ainit(self):
-        tools = await self.mcp_session.list_tools()
         dspy_tools = []
+
+        tools = await self.mcp_session.list_tools()
         for tool in tools.tools:
             dspy_tools.append(dspy.Tool.from_mcp_tool(self.mcp_session, tool))
 
@@ -58,43 +61,44 @@ class LibrarianAgent(dspy.Module):
             tools=dspy_tools,
         )
 
-    async def call(self):
-        return await self.mcp_session.call_tool(
-            "add_book",
-            {
-                "book_id": "1",
-                "title": "hello",
-                "author": "will",
-                "num_copies": 2,
-            },
-        )
-
     async def aforward(self, request: str):
         try:
-            return await self.lm.acall(user_request=request)
+            resp = await self.lm.acall(history=self.conversations, user_request=request)
+            print(resp.process_result)
+            self.conversations.messages.append(
+                {"request": request, **resp}
+            )
+            return resp
+
         except Exception as e:
             print(f"Error calling LM agent: {e}")
+            raise e
 
 
 async def main():
-    agent = None
+    token = os.environ.get("TEST_TOKEN")
+
     try:
-        async with Client("http://localhost:5400/mcp") as client:
+        transport = StreamableHttpTransport(
+            url="http://localhost:5400/mcp",
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+        )
+
+        async with Client(transport) as client:
             agent = LibrarianAgent(client.session)
             await agent.ainit()
 
             while True:
                 request = input("Library > ")
                 response = await agent.acall(request)
-                print(response.process_result)
+                print(response)
+
     except Exception as e:
         print(f"Error calling agent: {e}")
-        if agent:
-            print(agent.inspect_history())
+        raise e
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nCancelled..")
+    asyncio.run(main())
