@@ -6,15 +6,10 @@ from pydantic import BaseModel, Field
 
 from fastmcp import FastMCP, Context
 from fastmcp.server.middleware import Middleware, MiddlewareContext
-
-# import uvicorn
 from starlette.exceptions import HTTPException
 
-# from starlette.applications import Request
-# from starlette.applications import Starlette
-# from starlette.routing import Mount
-
 from librarian.library import Library, Book, Loan, Member
+
 
 library = Library()
 library.add_example_data()
@@ -88,7 +83,7 @@ async def get_book(ctx: Context, book_id: str) -> Book:
 @mcp.tool()
 async def search_books(query: str) -> List[Book]:
     """Searches for books by title or author."""
-    print(f"Getting request to call search from client ")
+    print("Getting request to call search books")
 
     return library.search_books(query)
 
@@ -98,6 +93,8 @@ async def get_member_loans(ctx: Context, member_id: int) -> List[Loan]:
     """Gets all loans for a specific member."""
     auth_id = ctx.get_state("member_id")
 
+    print(f"Getting request to find member loans: {auth_id}")
+
     if auth_id != 0 and auth_id != member_id:
         raise HTTPException(status_code=403, detail="Forbidden, unauthorized access")
 
@@ -105,22 +102,8 @@ async def get_member_loans(ctx: Context, member_id: int) -> List[Loan]:
 
 
 class UserAuthMiddleware(Middleware):
-    def __init__(self): ...
-
-    async def on_call_tool(self, context, call_next):
-        # Toy impl of an Auth token service, maps from token to member id
-        # In reality this should be your Auth service
-        tokens = {
-            "token_000": 0,  # admin
-            "token_001": 1,  # alice
-            "token_002": 2,  # bob
-            "token_003": 3,  # charlie
-            "token_004": 4,  # diana
-            "token_005": 5,  # eve
-        }
+    def _parse_token(self, context) -> str:
         headers = context.fastmcp_context.request_context.request.headers
-
-        # breakpoint()
 
         # parse authorization header
         bearer_token = headers.get("authorization")
@@ -128,13 +111,29 @@ class UserAuthMiddleware(Middleware):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         token = bearer_token.split(" ")[1]
+        return token
 
-        member_id = tokens.get(token)
+    def _lookup_member(self, token) -> str:
+        # Toy impl of an Auth token service, maps from token to member id
+        # In reality this should be your Auth service
+        tokens_to_members = {
+            "token_000": 0,  # admin
+            "token_001": 1,  # alice
+            "token_002": 2,  # bob
+            "token_003": 3,  # charlie
+            "token_004": 4,  # diana
+            "token_005": 5,  # eve
+        }
+        return tokens_to_members.get(token)
+
+    async def on_call_tool(self, context, call_next):
+        token = self._parse_token(context)
+        member_id = self._lookup_member(token)
         print(
             f"Authorized connection from member {member_id}: {library.members[member_id]}"
         )
 
-        # Authz service
+        # Authz for access to book
         admin_tools = [
             "add_book",
             "search_member",
@@ -144,8 +143,6 @@ class UserAuthMiddleware(Middleware):
             raise HTTPException(status_code=403, detail="Forbidden")
 
         context.fastmcp_context.set_state("member_id", member_id)
-        context.fastmcp_context.set_state("permissions", ["read", "write"])
-
         return await call_next(context)
 
 
