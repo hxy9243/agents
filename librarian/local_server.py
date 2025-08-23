@@ -5,11 +5,11 @@ from pydantic import BaseModel, Field
 
 from mcp.server.fastmcp import FastMCP, Context
 
-from librarian.library import Library, Book, Loan, Member, add_example_data
+from librarian.library import Library, Book, Loan, Member
+
 
 library = Library()
-
-add_example_data(library)
+library.add_example_data()
 
 
 mcp = FastMCP(
