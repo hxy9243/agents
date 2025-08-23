@@ -21,12 +21,15 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async def my_member_info(ctx: Context):
+async def my_member_info(ctx: Context) -> Member:
     """Get the user's member_id information"""
     auth_id = ctx.get_state("member_id")
     print(f"Getting member info from member id: {auth_id}")
 
-    return auth_id
+    member =library.get_member(auth_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="member not found")
+    return member
 
 
 @mcp.tool()
@@ -84,7 +87,10 @@ async def get_book(ctx: Context, book_id: str) -> Book:
 async def search_books(query: str) -> List[Book]:
     """Searches for books by title or author."""
     print("Getting request to call search books")
-    return library.search_books(query)
+    results = library.search_books(query)
+
+    print(f"Getting search results: {results}")
+    return results
 
 
 @mcp.tool()

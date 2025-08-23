@@ -31,6 +31,9 @@ class LibrarianSignature(dspy.Signature):
     When user is borrowing books, you should return the book info and copy id.
 
     If users' request doesn't pertain to library or books, simply decline politely.
+
+    If user's request returns 401 or 403, politely inform them they're not authorized to
+    access that information.
     """
 
     history: dspy.History = dspy.InputField(desc="conversation history")
@@ -77,6 +80,8 @@ class LibrarianAgent(dspy.Module):
 
 async def main():
     token = os.environ.get("TEST_TOKEN")
+    if not token:
+        raise ValueError("Your user token not set")
 
     try:
         transport = StreamableHttpTransport(
@@ -89,6 +94,12 @@ async def main():
         async with Client(transport) as client:
             agent = LibrarianAgent(client.session)
             await agent.ainit()
+
+            member = await client.call_tool("my_member_info")
+            if member.is_error:
+                raise ValueError("Error: unable to login")
+
+            print(f"Welcome, user {member.data.name}")
 
             while True:
                 request = input("Library > ")

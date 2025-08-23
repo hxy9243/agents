@@ -93,6 +93,9 @@ class Library:
         self._next_member_id += 1
         return member
 
+    def get_member(self, member_id: int) -> Member | None:
+        return self.members.get(member_id)
+
     def search_member(self, name: str) -> Member:
         for id, member in self.members.items():
             if name.lower() in member.name.lower():
