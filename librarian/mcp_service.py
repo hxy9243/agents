@@ -23,8 +23,10 @@ mcp = FastMCP(
 @mcp.tool()
 async def my_member_info(ctx: Context):
     """Get the user's member_id information"""
+    auth_id = ctx.get_state("member_id")
+    print(f"Getting member info from member id: {auth_id}")
 
-    return ctx.get_state("member_id")
+    return auth_id
 
 
 @mcp.tool()
@@ -46,7 +48,6 @@ async def search_member(ctx: Context, name: str) -> Member:
 
     auth_id = ctx.get_state("member_id")
     print(f"Getting request to call add_book from member {auth_id}")
-
     return library.search_member(name)
 
 
@@ -57,6 +58,7 @@ async def borrow_book(ctx: Context, book_id: str, member_id: int) -> Loan:
     if auth_id != member_id:
         raise HTTPException(status_code=403, detail="Forbidden, unauthorized access")
 
+    print(f"Calling borrow book from member id: {auth_id}")
     return library.borrow_book(book_id, member_id)
 
 
@@ -66,7 +68,6 @@ async def return_book(ctx: Context, copy_id: int) -> Loan:
     auth_id = ctx.get_state("member_id")
 
     print(f"Getting request to call add_book from member {auth_id}")
-
     return library.return_book(copy_id)
 
 
@@ -76,7 +77,6 @@ async def get_book(ctx: Context, book_id: str) -> Book:
     auth_id = ctx.get_state("member_id")
 
     print(f"Getting request to call get_book from member {auth_id}")
-
     return library.get_book(book_id)
 
 
@@ -84,7 +84,6 @@ async def get_book(ctx: Context, book_id: str) -> Book:
 async def search_books(query: str) -> List[Book]:
     """Searches for books by title or author."""
     print("Getting request to call search books")
-
     return library.search_books(query)
 
 
